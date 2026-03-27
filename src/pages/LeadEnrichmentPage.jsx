@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
-const BACKEND = (import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:8010`) + '/api'
+const BACKEND = (import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}`) + '/api'
 
 const getToken = () => localStorage.getItem('wb_ai_token') || ''
 const jsonHdr  = () => ({ 'Content-Type': 'application/json' })
@@ -106,11 +106,11 @@ function JsonModal({ data, onClose }) {
           </button>
         </div>
         {/* Body */}
-        <div style={{ flex: 1, overflow: 'auto', padding: '14px 18px' }}>
+        <div style={{ flex: 1, overflow: 'auto', padding: '14px 18px', background: '#ffffff' }}>
           <pre style={{
             margin: 0, fontSize: 12, lineHeight: 1.6,
             fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
-            color: 'var(--text-1)', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            color: '#111827', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
           }}>
             <JsonHighlight json={formatted} />
           </pre>
@@ -123,12 +123,12 @@ function JsonModal({ data, onClose }) {
 function JsonHighlight({ json }) {
   const html = json
     .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g, (match) => {
-      let cls = '#10b981' // number
+      let cls = '#0369a1' // number — blue
       if (/^"/.test(match)) {
-        if (/:$/.test(match)) cls = '#a5b4fc' // key
-        else cls = '#fbbf24' // string value
-      } else if (/true|false/.test(match)) cls = '#f97316'
-      else if (/null/.test(match)) cls = '#6b7280'
+        if (/:$/.test(match)) cls = '#111827' // key — near black
+        else cls = '#15803d' // string value — dark green
+      } else if (/true|false/.test(match)) cls = '#b45309' // amber
+      else if (/null/.test(match)) cls = '#9ca3af' // gray
       return `<span style="color:${cls}">${match}</span>`
     })
   return <span dangerouslySetInnerHTML={{ __html: html }} />
@@ -1285,7 +1285,7 @@ function ResultsTab({ leads, total, loading, filters, onFiltersChange, onRefresh
             </div>
             {expanded === lead.id && (
               <div style={{ borderTop: '1px solid var(--border-1)' }}>
-                <LeadFullReport lead={lead} compact />
+                <LeadEnrichView lead={lead} />
               </div>
             )}
           </div>
@@ -1573,6 +1573,237 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
                 </GhostBtn>
               )}
             </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LeadEnrichView — 4 enrichment containers (LinkedIn, Email, Outreach, Company)
+// ─────────────────────────────────────────────────────────────────────────────
+const ENRICH_TABS = [
+  { id: 'linkedin', label: 'LinkedIn Enrich', icon: '🔗', color: '#6366f1' },
+  { id: 'email',    label: 'Email Enrich',    icon: '✉️', color: '#10b981' },
+  { id: 'outreach', label: 'Outreach Enrich', icon: '📤', color: '#f59e0b' },
+  { id: 'company',  label: 'Company Enrich',  icon: '🏢', color: '#3b82f6' },
+]
+
+function EnrichJsonView({ data }) {
+  if (!data) return null
+  return (
+    <pre style={{
+      margin: 0, padding: '12px 14px', fontSize: 11, lineHeight: 1.6,
+      background: '#ffffff', color: '#000000',
+      borderRadius: 8, overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+    }}>
+      {JSON.stringify(data, null, 2)}
+    </pre>
+  )
+}
+
+
+function _RegenJsonView({ data, leadenrich_id, endpoint, viewTab, onRegenerated, accentColor }) {
+  const [regenerating, setRegenerating] = useState(false)
+
+  const handleRegenerate = async () => {
+    setRegenerating(true)
+    try {
+      const r = await fetch(`${BACKEND}/leads/${leadenrich_id}/${endpoint}`, { method: 'POST', headers: jsonHdr() })
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}))
+        throw new Error(d?.detail || `HTTP ${r.status}`)
+      }
+      const v = await fetch(`${BACKEND}/leads/view/${viewTab}?leadenrich_id=${encodeURIComponent(leadenrich_id)}`, { headers: jsonHdr() })
+      const fresh = await v.json()
+      if (!v.ok) throw new Error(fresh?.detail || `HTTP ${v.status}`)
+      onRegenerated(fresh)
+      toast.success('Regenerated')
+    } catch (e) {
+      toast.error('Regenerate failed: ' + e.message)
+    } finally {
+      setRegenerating(false)
+    }
+  }
+
+  if (!data) return null
+  return (
+    <div>
+      <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={handleRegenerate} disabled={regenerating} style={{
+          display: 'flex', alignItems: 'center', gap: 5, padding: '5px 12px',
+          borderRadius: 7, border: `1px solid ${accentColor}55`,
+          background: regenerating ? `${accentColor}10` : `${accentColor}18`,
+          color: accentColor, fontSize: 11, fontWeight: 600,
+          cursor: regenerating ? 'not-allowed' : 'pointer',
+          opacity: regenerating ? 0.7 : 1, transition: 'opacity 0.15s',
+        }}>
+          <RefreshCw size={11} style={{ animation: regenerating ? 'spin 1s linear infinite' : 'none' }} />
+          {regenerating ? 'Regenerating…' : 'Regenerate'}
+        </button>
+      </div>
+      <EnrichJsonView data={data} />
+    </div>
+  )
+}
+
+function OutreachEnrichView({ data, leadenrich_id, onRegenerated }) {
+  return (
+    <_RegenJsonView
+      data={data}
+      leadenrich_id={leadenrich_id}
+      endpoint="outreach"
+      viewTab="outreach"
+      onRegenerated={onRegenerated}
+      accentColor="#f59e0b"
+    />
+  )
+}
+
+function CompanyEnrichView({ data, leadenrich_id, onRegenerated }) {
+  return (
+    <_RegenJsonView
+      data={data}
+      leadenrich_id={leadenrich_id}
+      endpoint="company"
+      viewTab="company"
+      onRegenerated={onRegenerated}
+      accentColor="#3b82f6"
+    />
+  )
+}
+
+function LeadEnrichView({ lead }) {
+  const [activeTab, setActiveTab] = useState('linkedin')
+  const [cache, setCache]     = useState({})   // { tabId: data }
+  const [loading, setLoading] = useState({})   // { tabId: bool }
+  const [errors, setErrors]   = useState({})   // { tabId: msg }
+
+  const leadenrich_id = lead?.id
+
+  const fetchTab = async (tabId) => {
+    if (cache[tabId] || loading[tabId]) return
+    setLoading(p => ({ ...p, [tabId]: true }))
+    setErrors(p => ({ ...p, [tabId]: null }))
+    try {
+      const r = await fetch(
+        `${BACKEND}/leads/view/${tabId}?leadenrich_id=${encodeURIComponent(leadenrich_id)}`,
+        { headers: jsonHdr() }
+      )
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || `HTTP ${r.status}`)
+      setCache(p => ({ ...p, [tabId]: data }))
+    } catch (e) {
+      setErrors(p => ({ ...p, [tabId]: e.message }))
+    } finally {
+      setLoading(p => ({ ...p, [tabId]: false }))
+    }
+  }
+
+  const refreshTab = async (tabId) => {
+    setLoading(p => ({ ...p, [tabId]: true }))
+    setErrors(p => ({ ...p, [tabId]: null }))
+    try {
+      const r = await fetch(
+        `${BACKEND}/leads/view/${tabId}?leadenrich_id=${encodeURIComponent(leadenrich_id)}`,
+        { headers: jsonHdr() }
+      )
+      const data = await r.json()
+      if (!r.ok) throw new Error(data?.detail || `HTTP ${r.status}`)
+      setCache(p => ({ ...p, [tabId]: data }))
+    } catch (e) {
+      setErrors(p => ({ ...p, [tabId]: e.message }))
+    } finally {
+      setLoading(p => ({ ...p, [tabId]: false }))
+    }
+  }
+
+  // Auto-load LinkedIn tab on mount
+  useEffect(() => {
+    if (leadenrich_id) fetchTab('linkedin')
+  }, [leadenrich_id])
+
+  const handleTabClick = (tabId) => {
+    setActiveTab(tabId)
+    fetchTab(tabId)
+  }
+
+  return (
+    <div style={{ padding: '12px 14px' }}>
+      {/* leadenrich_id badge */}
+      <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 10, color: 'var(--text-3)' }}>leadenrich_id:</span>
+        <code style={{
+          fontSize: 10, padding: '2px 7px', borderRadius: 5,
+          background: 'rgba(99,102,241,0.12)', color: '#a5b4fc', fontFamily: 'monospace',
+        }}>{leadenrich_id}</code>
+      </div>
+
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 12, borderBottom: '1px solid var(--border-1)', paddingBottom: 0 }}>
+        {ENRICH_TABS.map(tab => {
+          const isActive = activeTab === tab.id
+          const isLoading = loading[tab.id]
+          const isDone = !!cache[tab.id]
+          return (
+            <button key={tab.id} onClick={() => handleTabClick(tab.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 5, padding: '7px 12px',
+              border: 'none', borderBottom: isActive ? `2px solid ${tab.color}` : '2px solid transparent',
+              background: 'transparent', cursor: 'pointer', fontSize: 11, fontWeight: isActive ? 600 : 400,
+              color: isActive ? tab.color : 'var(--text-3)', whiteSpace: 'nowrap',
+              borderRadius: '6px 6px 0 0', transition: 'color 0.15s',
+            }}>
+              <span>{tab.icon}</span>
+              {tab.label}
+              {isLoading && <span style={{ fontSize: 9, opacity: 0.7 }}>⟳</span>}
+              {!isLoading && isDone && <span style={{ fontSize: 8, color: '#10b981' }}>●</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Content */}
+      {ENRICH_TABS.map(tab => {
+        if (activeTab !== tab.id) return null
+        const isLoading = loading[tab.id]
+        const err = errors[tab.id]
+        const data = cache[tab.id]
+        return (
+          <div key={tab.id}>
+            {isLoading && (
+              <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
+                Loading {tab.label}…
+              </div>
+            )}
+            {!isLoading && err && (
+              <div style={{ padding: '12px 14px', borderRadius: 8, background: 'rgba(239,68,68,0.08)',
+                color: '#f87171', fontSize: 12 }}>
+                {err}
+              </div>
+            )}
+            {!isLoading && !err && data && tab.id === 'outreach' && (
+              <OutreachEnrichView
+                data={data}
+                leadenrich_id={leadenrich_id}
+                onRegenerated={fresh => setCache(p => ({ ...p, outreach: fresh }))}
+              />
+            )}
+            {!isLoading && !err && data && tab.id === 'company' && (
+              <CompanyEnrichView
+                data={data}
+                leadenrich_id={leadenrich_id}
+                onRegenerated={fresh => setCache(p => ({ ...p, company: fresh }))}
+              />
+            )}
+            {!isLoading && !err && data && tab.id !== 'outreach' && tab.id !== 'company' && (
+              <EnrichJsonView data={data} />
+            )}
+            {!isLoading && !err && !data && (
+              <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-3)', fontSize: 12 }}>
+                No data yet
+              </div>
+            )}
           </div>
         )
       })}
@@ -4434,7 +4665,7 @@ function _buildJsonPayload(lead) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Company Intel Section (P1–P6 company enrichment)
-// ─────────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────���─
 function CompanyIntelSection({ lead }) {
   const companyTags    = (() => { try { return JSON.parse(lead.company_tags    || '[]') } catch { return [] } })()
   const cultureSigs    = (() => { try { return JSON.parse(lead.culture_signals || '{}') } catch { return {} } })()
