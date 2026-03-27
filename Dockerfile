@@ -13,7 +13,7 @@ COPY . .
 # VITE_BACKEND_URL is empty so nginx handles the /api proxy at runtime.
 # Override at build time if you need a direct absolute URL instead:
 #   docker build --build-arg VITE_BACKEND_URL=https://api.example.com
-ARG VITE_BACKEND_URL=""
+ARG VITE_BACKEND_URL="https://leadenrichment-production-5b78.up.railway.app"
 ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
 
 RUN npm run build
