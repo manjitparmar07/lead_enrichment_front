@@ -22,8 +22,8 @@ RUN npm run build
 # ── Stage 2: Serve ───────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine
 
-# Replace default nginx site config with our SPA + proxy config
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Use nginx template — envsubst replaces ${BACKEND_URL} at container start
+COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # Copy built React bundle from builder
 COPY --from=builder /app/dist /usr/share/nginx/html
