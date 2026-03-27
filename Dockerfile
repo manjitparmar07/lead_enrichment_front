@@ -22,7 +22,7 @@ RUN npm run build
 # ── Stage 2: Serve ───────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine
 
-# Use nginx template — envsubst replaces ${BACKEND_URL} at container start
+# Static SPA — no proxy needed, React calls backend via VITE_BACKEND_URL
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 # Copy built React bundle from builder
