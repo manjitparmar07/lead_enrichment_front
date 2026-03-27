@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Copy, Check, Eye, EyeOff, Key, Loader } from 'lucide-react'
 
-const BACKEND = (import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:8010`) + '/api'
+const BACKEND = (import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}`) + '/api'
 const BASE    = BACKEND.replace('/api', '')
 const TOKEN   = '<YOUR_TOKEN>'
 
@@ -27,11 +27,16 @@ export default function ApiDocPage() {
   }
 
   const GROUPS = [
-    { id: 'token', label: 'Get Token',    icon: '🔑' },
-    { id: 'bulk',  label: 'Bulk Enrich',  icon: '📦' },
-    { id: 'core',  label: 'Core',         icon: '🔷' },
-    { id: 'intel', label: 'Intelligence', icon: '🧠' },
-    { id: 'output',label: 'Output',       icon: '📤' },
+    { id: 'token',    label: 'Get Token',        icon: '🔑' },
+    { id: 'bulk',     label: 'Bulk Enrich',       icon: '📦' },
+    { id: 'divider1', divider: true, label: 'Enrichment Views' },
+    { id: 'email',    label: 'Email Enrich',      icon: '📧' },
+    { id: 'outreach', label: 'Outreach Enrich',   icon: '✉️'  },
+    { id: 'company',  label: 'Company Enrich',    icon: '🏢' },
+    { id: 'divider2', divider: true, label: 'AI Endpoints' },
+    { id: 'core',     label: 'Core',              icon: '🔷' },
+    { id: 'intel',    label: 'Intelligence',      icon: '🧠' },
+    { id: 'output',   label: 'Output',            icon: '📤' },
   ]
 
   const aiNote = 'No auth required. Pass the raw BrightData profile object in the body.'
@@ -40,7 +45,7 @@ export default function ApiDocPage() {
     bulk: [
       {
         id: 'enrich-bulk', method: 'POST', path: '/api/leads/enrich/bulk', title: 'Bulk Enrich',
-        desc: 'Submit up to 5000 LinkedIn profile URLs for async enrichment. Pass your token in the request body. Returns a job_id — poll /api/leads/jobs/{job_id} to track progress.',
+        desc: 'Submit up to 5000 LinkedIn profile URLs for async enrichment. Pass your JWT token (from Get Token) in the request body. Returns a job_id — poll /api/leads/jobs/{job_id} to track progress. The token carries your organization_id and sso_id automatically.',
         curl:
 `curl -X POST ${BASE}/api/leads/enrich/bulk \\
   -H "Content-Type: application/json" \\
@@ -65,7 +70,7 @@ export default function ApiDocPage() {
       },
       {
         id: 'job-status', method: 'GET', path: '/api/leads/jobs/{job_id}', title: 'Poll Job Status',
-        desc: 'Get real-time status of a bulk enrichment job including chunk-level sub-jobs. No auth required.',
+        desc: 'Poll the status of a bulk enrichment job. Each completed lead in the Ably real-time event carries a leadenrich_id — use that ID to call the Email, Outreach, and Company view endpoints. No auth required.',
         curl:
 `curl ${BASE}/api/leads/jobs/JOB_ID`,
         response:
@@ -80,9 +85,147 @@ export default function ApiDocPage() {
     { "chunk_index": 1, "status": "running",   "processed": 3, "failed": 0 },
     { "chunk_index": 2, "status": "pending",   "processed": 0, "failed": 0 }
   ]
+}
+
+// Each Ably real-time event (channel: wb-leads-{org_id}) carries:
+// {
+//   "event": "lead_done",
+//   "leadenrich_id": "abc123def456",   ← use this for view APIs
+//   "linkedin_url": "https://www.linkedin.com/in/johndoe",
+//   "name": "John Doe",
+//   "score_tier": "hot"
+// }`,
+      },
+    ],
+
+    // ── Enrichment View APIs ──────────────────────────────────────────────────
+
+    email: [
+      {
+        id: 'email-enrich', method: 'GET', path: '/api/leads/view/email', title: 'Email Enrichment',
+        desc: 'Returns the email enrichment result — best verified work email, source provider (apollo/hunter), confidence score, verification status, bounce risk, and all discovered emails. Pass the leadenrich_id returned from the bulk enrich job results.',
+        curl:
+`curl "${BASE}/api/leads/view/email?leadenrich_id=abc123def456"`,
+        response:
+`{
+  "lead_id": "abc123def456",
+  "name": "John Doe",
+  "company": "Acme Corp",
+
+  "work_email": "john.doe@acme.com",
+  "email": "john.doe@acme.com",
+  "source": "apollo",
+  "confidence": 92,
+  "verified": true,
+  "bounce_risk": "low",
+  "enrichment_source": "apollo_person_match",
+
+  "phone": "+1-415-555-0100",
+
+  "all_emails": ["john.doe@acme.com", "jdoe@acme.com"],
+  "activity_emails": ["john@personalsite.com"],
+  "activity_phones": []
 }`,
       },
     ],
+
+    outreach: [
+      {
+        id: 'outreach-enrich', method: 'GET', path: '/api/leads/view/outreach', title: 'Outreach Enrichment',
+        desc: 'Returns AI-generated outreach assets — personalised cold email, LinkedIn note, multi-step follow-up sequence, best send time, and pitch hooks. Pass the leadenrich_id returned from the bulk enrich job results.',
+        curl:
+`curl "${BASE}/api/leads/view/outreach?leadenrich_id=abc123def456"`,
+        response:
+`{
+  "lead_id": "abc123def456",
+  "name": "John Doe",
+  "title": "VP of Engineering",
+  "company": "Acme Corp",
+  "score_tier": "hot",
+
+  "cold_email": {
+    "subject": "Quick question about your engineering stack at Acme",
+    "body": "Hi John,\\n\\nI noticed you recently posted about platform engineering challenges..."
+  },
+
+  "linkedin_note": "Hey John, love what you're building at Acme — happy to connect?",
+
+  "sequence": {
+    "day_1": "Send cold email",
+    "day_3": "LinkedIn connection request with note",
+    "day_7": "Follow-up email referencing their recent post",
+    "day_14": "Final value-add email with case study"
+  },
+
+  "best_time": "Tuesday 10–11am",
+  "warm_signal": "Posted about platform engineering 3 days ago",
+
+  "pitch_intelligence": {
+    "primary_pitch": "Help John's team ship faster with automated pipelines",
+    "pain_points": ["Scaling infrastructure", "Tech debt"],
+    "value_props": ["60% fewer deployment failures"]
+  }
+}`,
+      },
+    ],
+
+    company: [
+      {
+        id: 'company-enrich', method: 'GET', path: '/api/leads/view/company', title: 'Company Enrichment',
+        desc: 'Returns full company data — identity, profile, website intelligence, market signals, intent signals, scores, and tags. Pass the leadenrich_id returned from the bulk enrich job results.',
+        curl:
+`curl "${BASE}/api/leads/view/company?leadenrich_id=abc123def456"`,
+        response:
+`{
+  "lead_id": "abc123def456",
+  "company_id": "co_xyz789",
+
+  "identity": {
+    "name": "Acme Corp",
+    "domain": "acme.com",
+    "website": "https://www.acme.com",
+    "linkedin_url": "https://www.linkedin.com/company/acme-corp"
+  },
+
+  "profile": {
+    "industry": "Developer Tools / SaaS",
+    "employee_count": "201-500",
+    "revenue": "$10M-$50M ARR",
+    "tech_stack": ["React", "Kubernetes", "Postgres", "AWS"]
+  },
+
+  "website_intelligence": {
+    "homepage_summary": "Acme builds developer infrastructure for modern teams...",
+    "key_features": ["CI/CD automation", "Zero-downtime deploys"],
+    "pricing_model": "Per-seat SaaS"
+  },
+
+  "market_signals": {
+    "news_mentions": [{ "title": "Acme raises $20M Series B", "date": "2025-01-15" }],
+    "crunchbase": { "stage": "Series B", "total_funding": "$32M" },
+    "hiring_signals": ["Hiring 12 engineers", "Opening Berlin office"]
+  },
+
+  "intent_signals": {
+    "funding_event": true,
+    "hiring_surge": true
+  },
+
+  "scores": {
+    "company_score": 74,
+    "company_score_tier": "warm",
+    "combined_score": 78
+  },
+
+  "tags": {
+    "company_tags": ["series-b", "dev-tools", "scaling", "hiring"],
+    "account_pitch": { "hook": "Series B momentum + active hiring = ideal timing" }
+  }
+}`,
+      },
+    ],
+
+    // ── AI Endpoints ─────────────────────────────────────────────────────────
 
     core: [
       {
@@ -214,7 +357,7 @@ export default function ApiDocPage() {
 }`,
       },
       {
-        id: 'outreach', method: 'POST', path: '/api/v1/ai/outreach', title: 'Outreach',
+        id: 'outreach-ai', method: 'POST', path: '/api/v1/ai/outreach', title: 'Outreach',
         desc: `Generate personalised cold email and LinkedIn outreach copy for a prospect. ${aiNote}`,
         curl:
 `curl -X POST ${BASE}/api/v1/ai/outreach \\
@@ -284,35 +427,43 @@ export default function ApiDocPage() {
         {/* Left nav */}
         <div style={{
           width: 192, flexShrink: 0, borderRight: '1px solid var(--border-1)',
-          paddingRight: 16, display: 'flex', flexDirection: 'column', gap: 3,
+          paddingRight: 16, display: 'flex', flexDirection: 'column', gap: 2,
         }}>
           <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase',
             letterSpacing: '0.08em', marginBottom: 8 }}>Sections</div>
 
-          {GROUPS.map(g => (
-            <button key={g.id} onClick={() => setActiveGroup(g.id)} style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
-              borderRadius: 7, border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%',
-              background: activeGroup === g.id ? 'rgba(99,102,241,0.12)' : 'transparent',
-              color: activeGroup === g.id ? '#a5b4fc' : 'var(--text-2)',
-              fontSize: 12, fontWeight: activeGroup === g.id ? 600 : 400,
-              transition: 'all 0.12s',
-            }}>
-              <span style={{ fontSize: 13 }}>{g.icon}</span>
-              {g.label}
-            </button>
-          ))}
+          {GROUPS.map(g => {
+            if (g.divider) return (
+              <div key={g.id} style={{ marginTop: 10, marginBottom: 4 }}>
+                <div style={{
+                  fontSize: 9, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase',
+                  letterSpacing: '0.1em', paddingLeft: 10,
+                  borderLeft: '2px solid rgba(99,102,241,0.3)',
+                }}>
+                  {g.label}
+                </div>
+              </div>
+            )
+            const isActive = activeGroup === g.id
+            return (
+              <button key={g.id} onClick={() => setActiveGroup(g.id)} style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px',
+                borderRadius: 7, border: 'none', cursor: 'pointer', textAlign: 'left', width: '100%',
+                background: isActive ? 'rgba(99,102,241,0.12)' : 'transparent',
+                color: isActive ? '#a5b4fc' : 'var(--text-2)',
+                fontSize: 12, fontWeight: isActive ? 600 : 400,
+                transition: 'all 0.12s',
+              }}>
+                <span style={{ fontSize: 13 }}>{g.icon}</span>
+                {g.label}
+              </button>
+            )
+          })}
 
-          <div style={{ marginTop: 20, padding: '10px 12px', borderRadius: 8,
+          {/* Legend cards */}
+          <div style={{ marginTop: 16, padding: '10px 12px', borderRadius: 8,
             background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)' }}>
             <div style={{ fontSize: 9, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase',
-              letterSpacing: '0.07em', marginBottom: 5 }}>Base URL</div>
-            <div style={{ fontSize: 10, color: 'var(--text-2)', wordBreak: 'break-all', lineHeight: 1.5, fontFamily: 'monospace' }}>{BASE}</div>
-          </div>
-
-          <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8,
-            background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#10b981', textTransform: 'uppercase',
               letterSpacing: '0.07em', marginBottom: 5 }}>Bulk Auth</div>
             <div style={{ fontSize: 10, color: 'var(--text-2)', fontFamily: 'monospace', lineHeight: 1.7 }}>
               Token in body:<br /><span style={{ color: '#a7f3d0' }}>"token": "&lt;token&gt;"</span>
@@ -320,8 +471,8 @@ export default function ApiDocPage() {
           </div>
 
           <div style={{ marginTop: 8, padding: '10px 12px', borderRadius: 8,
-            background: 'rgba(251,191,36,0.06)', border: '1px solid rgba(251,191,36,0.2)' }}>
-            <div style={{ fontSize: 9, fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase',
+            background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)' }}>
+            <div style={{ fontSize: 9, fontWeight: 700, color: '#10b981', textTransform: 'uppercase',
               letterSpacing: '0.07em', marginBottom: 5 }}>AI Endpoints</div>
             <div style={{ fontSize: 10, color: 'var(--text-2)', fontFamily: 'monospace', lineHeight: 1.7 }}>
               No auth required<br />Just send profile
@@ -335,6 +486,7 @@ export default function ApiDocPage() {
             ? <TokenGenerator BASE={BASE} copy={copy} copied={copied} />
             : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+
                 {list.map(ep => {
                   const mc = METHOD_COLOR[ep.method] || METHOD_COLOR.GET
                   return (
@@ -342,6 +494,7 @@ export default function ApiDocPage() {
                       borderRadius: 10, border: '1px solid var(--border-1)',
                       background: 'var(--bg-card)', overflow: 'hidden',
                     }}>
+                      {/* Endpoint header */}
                       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-1)',
                         display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={{
@@ -355,6 +508,7 @@ export default function ApiDocPage() {
                       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                         <p style={{ margin: 0, fontSize: 12, color: 'var(--text-2)', lineHeight: 1.65 }}>{ep.desc}</p>
 
+                        {/* curl */}
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>curl</span>
@@ -368,6 +522,7 @@ export default function ApiDocPage() {
                           }}>{ep.curl}</pre>
                         </div>
 
+                        {/* response */}
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>response</span>
@@ -375,8 +530,8 @@ export default function ApiDocPage() {
                           </div>
                           <pre style={{
                             margin: 0, padding: '10px 14px', borderRadius: 8, overflow: 'auto',
-                            background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.15)',
-                            fontSize: 11, lineHeight: 1.75, color: '#a7f3d0', fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                            background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(16,185,129,0.2)',
+                            fontSize: 11, lineHeight: 1.75, color: '#6ee7b7', fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                             whiteSpace: 'pre',
                           }}>{ep.response}</pre>
                         </div>
@@ -444,8 +599,10 @@ function TokenGenerator({ BASE, copy, copied }) {
         <p style={{ margin: 0, fontSize: 12, color: 'var(--text-2)', lineHeight: 1.65 }}>
           Login with your <strong style={{ color: 'var(--text-1)' }}>WorksBuddy admin account</strong>.
           Only admin + owner accounts from the WorksBuddy organisation can generate a token.
-          The token is valid for <strong style={{ color: 'var(--text-1)' }}>8 hours</strong> and must include{' '}
-          <code style={{ color: '#a7f3d0', fontSize: 11 }}>platform: "worksbuddy"</code> to be accepted by the API.
+          The token is valid for <strong style={{ color: 'var(--text-1)' }}>8 hours</strong> and carries{' '}
+          <code style={{ color: '#a7f3d0', fontSize: 11 }}>platform: "worksbuddy"</code>,{' '}
+          <code style={{ color: '#fde68a', fontSize: 11 }}>organization_id</code>, and{' '}
+          <code style={{ color: '#fde68a', fontSize: 11 }}>sso_id</code> — all required by the Bulk Enrich API.
         </p>
       </div>
 
@@ -518,16 +675,17 @@ function TokenGenerator({ BASE, copy, copied }) {
                 letterSpacing: '0.07em', marginBottom: 10 }}>Login Successful</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 16px' }}>
                 {[
-                  ['Name',  result.user?.full_name],
-                  ['Email', result.user?.email],
-                  ['Role',  result.user?.role],
-                  ['Org',   result.user?.organization],
-                  ['Org ID',result.user?.organization_id],
+                  ['Name',    result.user?.full_name],
+                  ['Email',   result.user?.email],
+                  ['SSO ID',  result.user?.sso_id],
+                  ['Role',    result.user?.role],
+                  ['Org',     result.user?.organization],
+                  ['Org ID',  result.user?.organization_id],
                   ['Expires', `${(result.expires_in / 3600).toFixed(0)}h`],
                 ].map(([k, v]) => (
                   <div key={k}>
                     <div style={{ fontSize: 9, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{k}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-1)', fontWeight: 500 }}>{v || '—'}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-1)', fontWeight: 500, wordBreak: 'break-all' }}>{v || '—'}</div>
                   </div>
                 ))}
               </div>
@@ -544,12 +702,13 @@ function TokenGenerator({ BASE, copy, copied }) {
               <pre style={{
                 margin: 0, padding: '10px 14px', borderRadius: 8, overflow: 'auto',
                 background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.06)',
-                fontSize: 11, lineHeight: 1.6, color: '#a7f3d0', fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                fontSize: 11, lineHeight: 1.6, color: '#6ee7b7', fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                 whiteSpace: 'pre-wrap', wordBreak: 'break-all',
               }}>{result.token}</pre>
               <p style={{ margin: '10px 0 0', fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5 }}>
-                Copy this token and use it as <code style={{ color: '#fde68a' }}>"token"</code> in the Bulk Enrich body. It carries{' '}
-                <code style={{ color: '#a7f3d0' }}>platform: "worksbuddy"</code> — required for API access.
+                Copy this token and use it as <code style={{ color: '#fde68a' }}>"token"</code> in the Bulk Enrich body.
+                It carries <code style={{ color: '#a7f3d0' }}>organization_id</code>, <code style={{ color: '#a7f3d0' }}>sso_id</code>,
+                and <code style={{ color: '#a7f3d0' }}>platform: "worksbuddy"</code>.
               </p>
             </div>
           </div>

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { LogIn, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react'
 
-const _HOST = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:8010`
+const _HOST = import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}`
 const BACKEND = `${_HOST}/api`
 
 export default function LoginPage({ onLogin }) {
