@@ -1274,6 +1274,11 @@ function ResultsTab({ leads, total, loading, filters, onFiltersChange, onRefresh
                     {[lead.title, lead.company, fmtCity(lead.city) || fmtCountry(lead.country)].filter(Boolean).join(' · ')}
                   </div>
                 </div>
+                {lead.enriched_at && (
+                  <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>
+                    Scraped {new Date(lead.enriched_at).toLocaleString()}
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
                 {lead.work_email && <span style={{ fontSize: 10, color: '#10b981', display: 'flex', gap: 3, alignItems: 'center' }}><Mail size={10} /> Email</span>}
@@ -1707,7 +1712,15 @@ function _RegenJsonView({ data, leadenrich_id, endpoint, viewTab, onRegenerated,
         const d = await r.json().catch(() => ({}))
         throw new Error(d?.detail || `HTTP ${r.status}`)
       }
-      const v = await fetch(`${BACKEND}/leads/view/${viewTab}?leadenrich_id=${encodeURIComponent(leadenrich_id)}`, { headers: jsonHdr() })
+      const isGetTab = viewTab === 'linkedin'
+      const v = await fetch(
+        isGetTab
+          ? `${BACKEND}/leads/view/${viewTab}?leadenrich_id=${encodeURIComponent(leadenrich_id)}`
+          : `${BACKEND}/leads/view/${viewTab}`,
+        isGetTab
+          ? { headers: jsonHdr() }
+          : { method: 'POST', headers: jsonHdr(), body: JSON.stringify({ leadenrich_id }) }
+      )
       const fresh = await v.json()
       if (!v.ok) throw new Error(fresh?.detail || `HTTP ${v.status}`)
       onRegenerated(fresh)
@@ -1774,17 +1787,27 @@ function LeadEnrichView({ lead }) {
 
   const leadenrich_id = lead?.id
 
+  const _fetchViewTab = async (tabId) => {
+    // linkedin uses GET + query param; email/outreach/company use POST + JSON body
+    const isGet = tabId === 'linkedin'
+    const url = isGet
+      ? `${BACKEND}/leads/view/${tabId}?leadenrich_id=${encodeURIComponent(leadenrich_id)}`
+      : `${BACKEND}/leads/view/${tabId}`
+    const opts = isGet
+      ? { headers: jsonHdr() }
+      : { method: 'POST', headers: jsonHdr(), body: JSON.stringify({ leadenrich_id }) }
+    const r = await fetch(url, opts)
+    const data = await r.json()
+    if (!r.ok) throw new Error(data?.detail || `HTTP ${r.status}`)
+    return data
+  }
+
   const fetchTab = async (tabId) => {
     if (cache[tabId] || loading[tabId]) return
     setLoading(p => ({ ...p, [tabId]: true }))
     setErrors(p => ({ ...p, [tabId]: null }))
     try {
-      const r = await fetch(
-        `${BACKEND}/leads/view/${tabId}?leadenrich_id=${encodeURIComponent(leadenrich_id)}`,
-        { headers: jsonHdr() }
-      )
-      const data = await r.json()
-      if (!r.ok) throw new Error(data?.detail || `HTTP ${r.status}`)
+      const data = await _fetchViewTab(tabId)
       setCache(p => ({ ...p, [tabId]: data }))
     } catch (e) {
       setErrors(p => ({ ...p, [tabId]: e.message }))
@@ -1797,12 +1820,7 @@ function LeadEnrichView({ lead }) {
     setLoading(p => ({ ...p, [tabId]: true }))
     setErrors(p => ({ ...p, [tabId]: null }))
     try {
-      const r = await fetch(
-        `${BACKEND}/leads/view/${tabId}?leadenrich_id=${encodeURIComponent(leadenrich_id)}`,
-        { headers: jsonHdr() }
-      )
-      const data = await r.json()
-      if (!r.ok) throw new Error(data?.detail || `HTTP ${r.status}`)
+      const data = await _fetchViewTab(tabId)
       setCache(p => ({ ...p, [tabId]: data }))
     } catch (e) {
       setErrors(p => ({ ...p, [tabId]: e.message }))
