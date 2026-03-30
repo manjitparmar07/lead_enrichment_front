@@ -460,45 +460,21 @@ export default function SystemPromptGeneratorPage() {
         throw new Error(err.detail || 'Generate failed')
       }
 
-      const reader  = resp.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
+      const data = await resp.json()
+      const prompts = data.prompts || {}
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          let evt
-          try { evt = JSON.parse(line.slice(6)) } catch { continue }
-
-          if (evt.status === 'section_start') {
-            setSections(prev => ({
-              ...prev,
-              [evt.key]: { state: 'running', prompt: '', error: '' },
-            }))
-          } else if (evt.status === 'section_done') {
-            setSections(prev => ({
-              ...prev,
-              [evt.key]: { state: 'done', prompt: evt.prompt, error: '' },
-            }))
-          } else if (evt.status === 'section_error') {
-            setSections(prev => ({
-              ...prev,
-              [evt.key]: { state: 'error', prompt: '', error: evt.error },
-            }))
-          } else if (evt.status === 'complete') {
-            setPhase(PHASE_DONE)
-          } else if (evt.status === 'error') {
-            toast.error(evt.error || 'Generation failed')
-            setPhase(PHASE_SCRAPED)
+      setSections(prev => {
+        const next = { ...prev }
+        for (const [key, val] of Object.entries(prompts)) {
+          if (val.error) {
+            next[key] = { state: 'error', prompt: '', error: val.error }
+          } else {
+            next[key] = { state: 'done', prompt: val.prompt || '', error: '' }
           }
         }
-      }
+        return next
+      })
+      setPhase(PHASE_DONE)
     } catch (e) {
       if (e.name === 'AbortError') return
       toast.error(e.message || 'Generation failed')
