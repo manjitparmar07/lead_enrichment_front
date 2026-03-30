@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
+
   server: {
     host: true,
     port: 5174,
@@ -12,5 +13,33 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+
+  build: {
+    // Target modern browsers — smaller, faster output
+    target: 'esnext',
+
+    // Raise warning threshold (Ably alone is 181 KB)
+    chunkSizeWarningLimit: 600,
+
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Core framework — cached long-term, rarely changes
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+
+          // Ably is 181 KB — split so it doesn't block initial paint
+          // (already dynamically imported in LeadEnrichmentPage, but this
+          //  ensures rollup doesn't inline it into the main chunk)
+          'vendor-ably': ['ably'],
+
+          // Small UI libs
+          'vendor-ui': ['react-hot-toast'],
+        },
+      },
+    },
+
+    // Inline tiny assets (<4 KB) instead of separate files
+    assetsInlineLimit: 4096,
   },
 })

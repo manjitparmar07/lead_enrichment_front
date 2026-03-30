@@ -18,6 +18,15 @@ const BACKEND = (import.meta.env.VITE_BACKEND_URL || `${window.location.protocol
 const getToken = () => localStorage.getItem('wb_ai_token') || ''
 const jsonHdr  = () => ({ 'Content-Type': 'application/json' })
 
+function getOrgId() {
+  try {
+    const t = getToken()
+    if (!t) return 'default'
+    const payload = JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')))
+    return payload.organization_id || payload.org_id || 'default'
+  } catch { return 'default' }
+}
+
 const TIER = {
   hot:  { color: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.28)',  icon: <Flame    size={11} />, label: 'Hot'  },
   warm: { color: '#f97316', bg: 'rgba(249,115,22,0.10)', border: 'rgba(249,115,22,0.28)', icon: <Star     size={11} />, label: 'Warm' },
@@ -1059,7 +1068,7 @@ function BulkTab({ onDone }) {
     if (!urls.length) return toast.error('No valid LinkedIn URLs found')
     setLoading(true); setJob(null)
     try {
-      const body = { token: getToken(), linkedin_urls: urls }
+      const body = { token: getToken(), linkedin_urls: urls, forward_to_lio: true }
       if (webhookUrl.trim()) body.webhook_url = webhookUrl.trim()
       const r = await fetch(`${BACKEND}/leads/enrich/bulk`, {
         method: 'POST', headers: jsonHdr(), body: JSON.stringify(body),
@@ -1364,9 +1373,42 @@ function ResultsTab({ leads, total, loading, filters, onFiltersChange, onRefresh
 // ─────────────────────────────────────────────────────────────────────────────
 function JobsTab({ jobs, onRefresh, onSelectJob }) {
   const [expandedJobs, setExpandedJobs] = useState({})
+  const [filterStatus, setFilterStatus] = useState('')
+  const [searchQ, setSearchQ] = useState('')
+  const [stopping, setStopping] = useState({})
+  const [deleting, setDeleting] = useState({})
 
   const toggleExpand = (jobId) =>
     setExpandedJobs(prev => ({ ...prev, [jobId]: !prev[jobId] }))
+
+  const handleStop = async (jobId) => {
+    setStopping(p => ({ ...p, [jobId]: true }))
+    try {
+      const res = await fetch(`/api/leads/jobs/${jobId}/stop`, { method: 'POST' })
+      if (!res.ok) throw new Error((await res.json()).detail)
+      onRefresh()
+    } catch (e) {
+      alert(`Stop failed: ${e.message}`)
+    } finally { setStopping(p => ({ ...p, [jobId]: false })) }
+  }
+
+  const handleDelete = async (jobId) => {
+    if (!confirm('Delete this job? This cannot be undone.')) return
+    setDeleting(p => ({ ...p, [jobId]: true }))
+    try {
+      const res = await fetch(`/api/leads/jobs/${jobId}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error((await res.json()).detail)
+      onRefresh()
+    } catch (e) {
+      alert(`Delete failed: ${e.message}`)
+    } finally { setDeleting(p => ({ ...p, [jobId]: false })) }
+  }
+
+  const visibleJobs = jobs.filter(j => {
+    if (filterStatus && j.status !== filterStatus) return false
+    if (searchQ && !j.id.toLowerCase().includes(searchQ.toLowerCase())) return false
+    return true
+  })
 
   const STATUS_CFG = {
     running:                { color: '#6366f1', bg: 'rgba(99,102,241,0.1)',  border: 'rgba(99,102,241,0.25)', label: 'Running',          spin: true  },
@@ -1393,26 +1435,50 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
     return <span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: '50%', background: '#6b7280', opacity: 0.5 }} />
   }
 
+  const ALL_STATUSES = ['running','pending','fallback','completed','completed_with_errors','failed','stale','cancelled']
+
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
-          {jobs.filter(j => ['running','fallback','pending'].includes(j.status)).length > 0
-            ? `${jobs.filter(j => ['running','fallback','pending'].includes(j.status)).length} job(s) in progress — auto-refreshing every 8s`
-            : `${jobs.length} total job(s)`
+      {/* Toolbar */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+        <input
+          type="text"
+          value={searchQ}
+          onChange={e => setSearchQ(e.target.value)}
+          placeholder="Search by Job ID…"
+          style={{
+            flex: 1, minWidth: 180, background: 'var(--bg-elevated)', border: '1px solid var(--border-1)',
+            borderRadius: 7, padding: '6px 12px', fontSize: 12, color: 'var(--text-1)',
+          }}
+        />
+        <select
+          value={filterStatus}
+          onChange={e => setFilterStatus(e.target.value)}
+          style={{
+            background: 'var(--bg-elevated)', border: '1px solid var(--border-1)',
+            borderRadius: 7, padding: '6px 10px', fontSize: 12, color: 'var(--text-1)', cursor: 'pointer',
+          }}
+        >
+          <option value="">All statuses</option>
+          {ALL_STATUSES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1).replace(/_/g,' ')}</option>)}
+        </select>
+        <div style={{ fontSize: 11, color: 'var(--text-3)', flexShrink: 0 }}>
+          {visibleJobs.filter(j => ['running','fallback','pending'].includes(j.status)).length > 0
+            ? `${visibleJobs.filter(j => ['running','fallback','pending'].includes(j.status)).length} in progress`
+            : `${visibleJobs.length} / ${jobs.length} jobs`
           }
         </div>
         <GhostBtn onClick={onRefresh}><RefreshCw size={11} /> Refresh</GhostBtn>
       </div>
 
-      {jobs.length === 0 && (
+      {visibleJobs.length === 0 && (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-3)' }}>
           <Briefcase size={34} style={{ opacity: 0.25, marginBottom: 10 }} />
-          <p style={{ fontSize: 14 }}>No enrichment jobs yet — use Bulk Enrich to start</p>
+          <p style={{ fontSize: 14 }}>{jobs.length === 0 ? 'No enrichment jobs yet — use Bulk Enrich to start' : 'No jobs match the current filter'}</p>
         </div>
       )}
 
-      {jobs.map(job => {
+      {visibleJobs.map(job => {
         const done = (job.processed || 0)
         const failed = (job.failed || 0)
         const total = job.total_urls || 0
@@ -1566,12 +1632,38 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
             )}
 
             {/* Actions */}
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               {done > 0 && (
                 <GhostBtn onClick={() => onSelectJob(job.id)} style={{ fontSize: 11 }}>
                   <List size={11} /> View {done} lead(s) <ArrowRight size={11} />
                 </GhostBtn>
               )}
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                {['running','pending','fallback'].includes(job.status) && (
+                  <button
+                    onClick={() => handleStop(job.id)}
+                    disabled={stopping[job.id]}
+                    style={{
+                      padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                      border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)',
+                      color: '#f59e0b', opacity: stopping[job.id] ? 0.5 : 1,
+                    }}
+                  >
+                    {stopping[job.id] ? 'Stopping…' : '⏹ Stop'}
+                  </button>
+                )}
+                <button
+                  onClick={() => handleDelete(job.id)}
+                  disabled={deleting[job.id]}
+                  style={{
+                    padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                    border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)',
+                    color: '#ef4444', opacity: deleting[job.id] ? 0.5 : 1,
+                  }}
+                >
+                  {deleting[job.id] ? 'Deleting…' : '🗑 Delete'}
+                </button>
+              </div>
             </div>
           </div>
         )

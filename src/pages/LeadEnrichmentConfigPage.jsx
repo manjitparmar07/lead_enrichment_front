@@ -516,6 +516,88 @@ const GROQ_MODELS = [
   },
 ]
 
+// ── Prompt accordion for LIO stage / AI module editing ───────────────────────
+function PromptAccordion({ prompts, onChange }) {
+  const [open, setOpen] = useState(null)
+  if (!prompts || prompts.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {prompts.map((p, idx) => {
+        const isOpen = open === idx
+        return (
+          <div key={p.id ?? idx} style={{
+            borderRadius: 8, border: '1px solid var(--border-1)',
+            background: 'var(--bg-base)', overflow: 'hidden',
+          }}>
+            <button
+              onClick={() => setOpen(isOpen ? null : idx)}
+              style={{
+                width: '100%', padding: '10px 14px', background: 'none', border: 'none',
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
+              }}
+            >
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 10,
+                background: 'rgba(99,102,241,0.15)', color: '#a5b4fc',
+                border: '1px solid rgba(99,102,241,0.25)', flexShrink: 0,
+              }}>
+                {p.id ?? idx}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)', flex: 1 }}>{p.name}</span>
+              {p.description && (
+                <span style={{ fontSize: 11, color: 'var(--text-3)', flex: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.description}
+                </span>
+              )}
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" strokeWidth="2.5"
+                style={{ transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', flexShrink: 0 }}>
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
+            {isOpen && (
+              <div style={{ padding: '0 14px 14px', borderTop: '1px solid var(--border-1)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>System Prompt</div>
+                  <textarea
+                    value={p.system || ''}
+                    onChange={e => { const next = [...prompts]; next[idx] = { ...p, system: e.target.value }; onChange(next) }}
+                    rows={4}
+                    style={{
+                      width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 7,
+                      border: '1px solid var(--border-1)', background: 'rgba(0,0,0,0.2)',
+                      color: 'var(--text-1)', fontSize: 11, lineHeight: 1.6,
+                      fontFamily: "'JetBrains Mono','Fira Code',monospace", resize: 'vertical', outline: 'none',
+                    }}
+                  />
+                </div>
+                {p.user_template !== undefined && (
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>User Prompt Template</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-3)', marginBottom: 6, lineHeight: 1.5 }}>
+                      Use <code style={{ color: '#a5b4fc' }}>{'{variable}'}</code> placeholders. Available vars depend on the stage.
+                    </div>
+                    <textarea
+                      value={p.user_template || ''}
+                      onChange={e => { const next = [...prompts]; next[idx] = { ...p, user_template: e.target.value }; onChange(next) }}
+                      rows={6}
+                      style={{
+                        width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 7,
+                        border: '1px solid var(--border-1)', background: 'rgba(0,0,0,0.2)',
+                        color: 'var(--text-1)', fontSize: 11, lineHeight: 1.6,
+                        fontFamily: "'JetBrains Mono','Fira Code',monospace", resize: 'vertical', outline: 'none',
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function LeadEnrichmentConfigPage() {
   const [tools,    setTools]    = useState([])
   const [loading,  setLoading]  = useState(true)
@@ -525,6 +607,14 @@ export default function LeadEnrichmentConfigPage() {
   const [lioSaving,    setLioSaving]    = useState(false)
   const [lioLoaded,    setLioLoaded]    = useState(false)
   const [lioStatus,    setLioStatus]    = useState(null)
+  // LIO stage prompts
+  const [lioStages,       setLioStages]       = useState([])
+  const [lioStagesSaving, setLioStagesSaving] = useState(false)
+  const [lioStagesLoaded, setLioStagesLoaded] = useState(false)
+  // AI module prompts
+  const [aiModules,       setAiModules]       = useState([])
+  const [aiModulesSaving, setAiModulesSaving] = useState(false)
+  const [aiModulesLoaded, setAiModulesLoaded] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -550,6 +640,12 @@ export default function LeadEnrichmentConfigPage() {
     apiFetch('/api/leads/lio/status')
       .then(d => setLioStatus(d))
       .catch(() => {})
+    apiFetch('/api/leads/lio/config')
+      .then(d => { setLioStages(d.prompts || []); setLioStagesLoaded(true) })
+      .catch(() => setLioStagesLoaded(true))
+    apiFetch('/api/v1/ai/config')
+      .then(d => { setAiModules(d.prompts || []); setAiModulesLoaded(true) })
+      .catch(() => setAiModulesLoaded(true))
   }, [])
 
   const saveLioPrompt = async () => {
@@ -560,12 +656,41 @@ export default function LeadEnrichmentConfigPage() {
         body: JSON.stringify({ system_prompt: lioPrompt, model: lioModel || null }),
       })
       toast.success('LIO configuration saved')
-      // Refresh status
       apiFetch('/api/leads/lio/status').then(d => setLioStatus(d)).catch(() => {})
     } catch (e) {
       toast.error('Save failed: ' + e.message)
     } finally {
       setLioSaving(false)
+    }
+  }
+
+  const saveLioStages = async () => {
+    setLioStagesSaving(true)
+    try {
+      await apiFetch('/api/leads/lio/config', {
+        method: 'PUT',
+        body: JSON.stringify({ prompts: lioStages }),
+      })
+      toast.success('LIO stage prompts saved')
+    } catch (e) {
+      toast.error('Save failed: ' + e.message)
+    } finally {
+      setLioStagesSaving(false)
+    }
+  }
+
+  const saveAiModules = async () => {
+    setAiModulesSaving(true)
+    try {
+      await apiFetch('/api/v1/ai/config', {
+        method: 'PUT',
+        body: JSON.stringify({ prompts: aiModules }),
+      })
+      toast.success('AI module prompts saved')
+    } catch (e) {
+      toast.error('Save failed: ' + e.message)
+    } finally {
+      setAiModulesSaving(false)
     }
   }
 
@@ -826,6 +951,115 @@ export default function LeadEnrichmentConfigPage() {
           </div>
         </div>
       </div>
+
+      {/* ── LIO Stage Prompts ── */}
+      <div style={{
+        marginTop: 24, borderRadius: 12,
+        border: '1px solid rgba(16,185,129,0.3)',
+        background: 'rgba(16,185,129,0.04)', overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '14px 20px', borderBottom: '1px solid rgba(16,185,129,0.2)',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: 'linear-gradient(135deg,#10b981,#059669)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+            </svg>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)' }}>LIO Stage Prompts</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+              System + user prompt templates for each LIO enrichment stage (outreach, tags, scoring, etc.)
+            </div>
+          </div>
+          <span style={{
+            fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+            background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.35)',
+            color: '#6ee7b7', textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>{lioStages.length} stages</span>
+        </div>
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {lioStagesLoaded ? (
+            <PromptAccordion prompts={lioStages} onChange={setLioStages} />
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Loading stage prompts…</div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={saveLioStages}
+              disabled={lioStagesSaving || !lioStagesLoaded}
+              style={{
+                padding: '8px 20px', borderRadius: 8, border: 'none', cursor: lioStagesSaving ? 'not-allowed' : 'pointer',
+                background: 'linear-gradient(135deg,#10b981,#059669)',
+                color: '#fff', fontSize: 12, fontWeight: 600,
+                opacity: lioStagesSaving ? 0.7 : 1, transition: 'opacity 0.15s',
+              }}
+            >
+              {lioStagesSaving ? 'Saving…' : 'Save Stage Prompts'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── AI Module Prompts ── */}
+      <div style={{
+        marginTop: 24, borderRadius: 12,
+        border: '1px solid rgba(245,158,11,0.3)',
+        background: 'rgba(245,158,11,0.04)', overflow: 'hidden',
+      }}>
+        <div style={{
+          padding: '14px 20px', borderBottom: '1px solid rgba(245,158,11,0.2)',
+          display: 'flex', alignItems: 'center', gap: 12,
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: 8,
+            background: 'linear-gradient(135deg,#f59e0b,#d97706)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+            </svg>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-1)' }}>AI Module Prompts</div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 2 }}>
+              System + user templates for each AI enrichment module (identity, contact, scores, ICP, outreach…)
+            </div>
+          </div>
+          <span style={{
+            fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+            background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.35)',
+            color: '#fcd34d', textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>{aiModules.length} modules</span>
+        </div>
+        <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {aiModulesLoaded ? (
+            <PromptAccordion prompts={aiModules} onChange={setAiModules} />
+          ) : (
+            <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Loading module prompts…</div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={saveAiModules}
+              disabled={aiModulesSaving || !aiModulesLoaded}
+              style={{
+                padding: '8px 20px', borderRadius: 8, border: 'none', cursor: aiModulesSaving ? 'not-allowed' : 'pointer',
+                background: 'linear-gradient(135deg,#f59e0b,#d97706)',
+                color: '#fff', fontSize: 12, fontWeight: 600,
+                opacity: aiModulesSaving ? 0.7 : 1, transition: 'opacity 0.15s',
+              }}
+            >
+              {aiModulesSaving ? 'Saving…' : 'Save Module Prompts'}
+            </button>
+          </div>
+        </div>
+      </div>
+
     </div>
   )
 }
