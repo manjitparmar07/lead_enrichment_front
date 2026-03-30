@@ -39,34 +39,42 @@ const MODULE_META = {
   persona_analysis:     { group: 'output',       color: '#84cc16', icon: '🔍' },
 }
 
-const MODELS = {
-  fast: [
-    { id: 'llama-3.1-8b-instant',         label: 'Llama 3.1 8B Instant',    note: 'Fastest · ~1000 tok/s · cheapest' },
-    { id: 'llama-3.2-11b-text-preview',    label: 'Llama 3.2 11B',           note: 'Better reasoning, still fast' },
-  ],
-  quality: [
-    { id: 'llama-3.3-70b-versatile',       label: 'Llama 3.3 70B Versatile', note: 'Best on Groq ⭐ recommended' },
-    { id: 'llama-3.1-70b-versatile',       label: 'Llama 3.1 70B (128k)',     note: 'Fallback if quota exceeded' },
-    { id: 'mixtral-8x7b-32768',            label: 'Mixtral 8x7B (32k ctx)',   note: 'Long context, multilingual' },
-    { id: 'deepseek-r1-distill-llama-70b', label: 'DeepSeek R1 70B',         note: 'Chain-of-thought reasoning' },
-  ],
-}
 const TIER_META = {
   fast:    { color: '#10b981', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)', label: 'FAST' },
   quality: { color: '#8b5cf6', bg: 'rgba(139,92,246,0.12)', border: 'rgba(139,92,246,0.3)', label: 'QUALITY' },
 }
 
-function getTier(modelId) {
-  return MODELS.fast.find(m => m.id === modelId) ? 'fast' : 'quality'
+function getTier(modelId, models) {
+  const flat = Object.values(models).flat()
+  const m = flat.find(x => x.id === modelId)
+  return m ? m.tier : 'quality'
+}
+
+// ── useLlmModels — fetch model list from DB via API ───────────────────────────
+function useLlmModels() {
+  const [models, setModels] = useState({ fast: [], quality: [] })
+  useEffect(() => {
+    apiFetch('/api/config/llm-models')
+      .then(rows => {
+        const grouped = { fast: [], quality: [] }
+        rows.forEach(m => {
+          const tier = m.tier === 'fast' ? 'fast' : 'quality'
+          grouped[tier].push({ id: m.id, label: m.label, note: m.note, tier })
+        })
+        setModels(grouped)
+      })
+      .catch(() => {}) // silently keep empty; ModelSelector handles no-models state
+  }, [])
+  return models
 }
 
 // ── Model Selector ────────────────────────────────────────────────────────────
-function ModelSelector({ value, onChange, accentColor }) {
+function ModelSelector({ value, onChange, accentColor, models }) {
   const [open, setOpen] = useState(false)
-  const allModels = [...MODELS.fast, ...MODELS.quality]
-  const current = allModels.find(m => m.id === value) || allModels[0]
-  const tier = getTier(value)
-  const tm = TIER_META[tier]
+  const allModels = [...(models.fast || []), ...(models.quality || [])]
+  const current = allModels.find(m => m.id === value) || allModels[0] || { label: value, tier: 'quality' }
+  const tier = getTier(value, models)
+  const tm = TIER_META[tier] || TIER_META.quality
 
   return (
     <div style={{ position: 'relative' }}>
@@ -101,7 +109,7 @@ function ModelSelector({ value, onChange, accentColor }) {
                 <div style={{ padding: '6px 12px 4px', fontSize: 9, fontWeight: 700, color: tmk.color, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid var(--border-1)', background: tmk.bg }}>
                   {tmk.label} MODELS
                 </div>
-                {MODELS[tierKey].map(m => (
+                {(models[tierKey] || []).map(m => (
                   <button key={m.id} onClick={() => { onChange(m.id); setOpen(false) }}
                     style={{
                       width: '100%', padding: '9px 12px', textAlign: 'left', cursor: 'pointer',
@@ -158,7 +166,7 @@ function TempSlider({ value, onChange }) {
 }
 
 // ── Module Editor Panel ───────────────────────────────────────────────────────
-function ModuleEditor({ module, onChange }) {
+function ModuleEditor({ module, onChange, models }) {
   const [activeTab, setActiveTab] = useState('user')
   const meta  = MODULE_META[module.id] || { color: '#6366f1', icon: '◆' }
   const group = GROUPS.find(g => g.id === meta.group) || GROUPS[0]
@@ -186,6 +194,7 @@ function ModuleEditor({ module, onChange }) {
             value={module.model}
             onChange={model => onChange({ ...module, model })}
             accentColor={meta.color}
+            models={models}
           />
         </div>
         <div>
@@ -284,6 +293,7 @@ export default function LioConfigPage() {
   const [dirty,     setDirty]     = useState(false)
   const [selected,  setSelected]  = useState('identity')
   const [view,      setView]      = useState('module') // 'module' | 'models'
+  const llmModels = useLlmModels()
 
   const load = useCallback(async () => {
     try {
@@ -333,7 +343,7 @@ export default function LioConfigPage() {
     )
   }
 
-  const fastCount    = modules.filter(m => getTier(m.model) === 'fast').length
+  const fastCount    = modules.filter(m => getTier(m.model, llmModels) === 'fast').length
   const qualityCount = modules.length - fastCount
   const estCost      = ((fastCount * 0.8 + qualityCount * 2.5) * 0.0001).toFixed(4)
 
@@ -420,7 +430,7 @@ export default function LioConfigPage() {
               </div>
               {group.modules.map(m => {
                 const meta  = MODULE_META[m.id] || { color: '#6366f1', icon: '◆' }
-                const tier  = getTier(m.model)
+                const tier  = getTier(m.model, llmModels)
                 const tm    = TIER_META[tier]
                 const active = view === 'module' && selected === m.id
                 return (
@@ -476,6 +486,7 @@ export default function LioConfigPage() {
             <ModuleEditor
               module={activeModule}
               onChange={updated => handleChange(activeModule.id, updated)}
+              models={llmModels}
             />
           )}
 
@@ -495,7 +506,7 @@ export default function LioConfigPage() {
                           {tier === 'fast' ? '⚡ Fast / Cheap' : '✦ Quality'}
                         </div>
                       </div>
-                      {MODELS[tier].map(m => (
+                      {(llmModels[tier] || []).map(m => (
                         <div key={m.id} style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-1)' }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-1)', fontFamily: 'monospace', marginBottom: 2 }}>{m.id}</div>
                           <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{m.note}</div>
@@ -518,7 +529,7 @@ export default function LioConfigPage() {
                     </div>
                     {group.modules.map(m => {
                       const meta = MODULE_META[m.id] || { color: '#6366f1', icon: '◆' }
-                      const tier = getTier(m.model)
+                      const tier = getTier(m.model, llmModels)
                       const tm   = TIER_META[tier]
                       return (
                         <div key={m.id} style={{ padding: '10px 16px', borderBottom: '1px solid var(--border-1)', display: 'flex', alignItems: 'center', gap: 12 }}>

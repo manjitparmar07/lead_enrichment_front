@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { saveJob, updateJob, removeJob, getActiveJobs } from '../utils/importStore'
 
 const API_BASE = '/api'
-const MAX_FILE_BYTES = 200 * 1024 * 1024  // 200 MB
+const MAX_FILE_BYTES = 500 * 1024 * 1024  // 500 MB
 const IMPORT_STORE_EVENT = 'wb-import-store-updated'
 
 const IMPORTABLE_FIELDS = [
@@ -290,7 +290,7 @@ function FilesStep({ onPreview }) {
     const valid = chosen.filter(f => isAccepted(f.name))
     const oversized = chosen.filter(f => f.size > MAX_FILE_BYTES)
     if (!valid.length) { toast.error('No supported files. Use CSV, TSV, XLS, or XLSX.'); return }
-    if (oversized.length) toast.error(`${oversized.length} file(s) exceed 200 MB and were skipped.`)
+    if (oversized.length) toast.error(`${oversized.length} file(s) exceed 500 MB and were skipped.`)
     const accepted = valid.filter(f => f.size <= MAX_FILE_BYTES)
     if (!accepted.length) return
     setPending(accepted)
@@ -309,7 +309,7 @@ function FilesStep({ onPreview }) {
     <>
       <DropZone
         label="Drop files here"
-        hint="or click to browse · select one or multiple files · CSV / TSV / XLS / XLSX · max 200 MB each"
+        hint="or click to browse · select one or multiple files · CSV / TSV / XLS / XLSX · max 500 MB each"
         multiple={true}
         onFiles={handleFiles}
         loading={loading}

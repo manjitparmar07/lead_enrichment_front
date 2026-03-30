@@ -37,6 +37,8 @@ export default function ApiDocPage() {
     { id: 'core',     label: 'Core',              icon: '🔷' },
     { id: 'intel',    label: 'Intelligence',      icon: '🧠' },
     { id: 'output',   label: 'Output',            icon: '📤' },
+    { id: 'divider3', divider: true, label: 'System Prompt' },
+    { id: 'sysprompt', label: 'System Prompt',    icon: '🗂️' },
   ]
 
   const aiNote = 'No auth required. Pass the raw BrightData profile object in the body.'
@@ -45,7 +47,7 @@ export default function ApiDocPage() {
     bulk: [
       {
         id: 'enrich-bulk', method: 'POST', path: '/api/leads/enrich/bulk', title: 'Bulk Enrich',
-        desc: 'Submit up to 5000 LinkedIn profile URLs for async enrichment. Pass your JWT token (from Get Token) in the request body. Returns a job_id — poll /api/leads/jobs/{job_id} to track progress. The token carries your organization_id and sso_id automatically.',
+        desc: 'Submit up to 5000 LinkedIn profile URLs for async enrichment. Pass your JWT token in the body — organization_id and sso_id are decoded from it automatically. Returns a job_id to track progress. Optional: pass system_prompt to override the default AI system prompt for every lead in this batch (used during scoring, outreach, and intelligence generation).',
         curl:
 `curl -X POST ${BASE}/api/leads/enrich/bulk \\
   -H "Content-Type: application/json" \\
@@ -55,7 +57,10 @@ export default function ApiDocPage() {
       "https://www.linkedin.com/in/person-one",
       "https://www.linkedin.com/in/person-two",
       "https://www.linkedin.com/in/person-three"
-    ]
+    ],
+    "system_prompt": "You are a B2B sales AI for Acme Inc. Focus on SaaS buyers...",
+    "skip_existing": true,
+    "forward_to_lio": false
   }'`,
         response:
 `{
@@ -102,10 +107,15 @@ export default function ApiDocPage() {
 
     email: [
       {
-        id: 'email-enrich', method: 'GET', path: '/api/leads/view/email', title: 'Email Enrichment',
-        desc: 'Returns the email enrichment result — best verified work email, source provider (apollo/hunter), confidence score, verification status, bounce risk, and all discovered emails. Pass the leadenrich_id returned from the bulk enrich job results.',
+        id: 'email-enrich', method: 'POST', path: '/api/leads/view/email', title: 'Email Enrichment',
+        desc: 'Returns the email enrichment result — best verified work email, source provider (apollo/hunter), confidence score, verification status, bounce risk, and all discovered emails. Pass leadenrich_id from bulk job results. If no email is stored a live Apollo → Hunter lookup runs automatically. Optional: pass system_prompt to get an AI-generated personalised email template in ai_generated.email_template.',
         curl:
-`curl "${BASE}/api/leads/view/email?leadenrich_id=abc123def456"`,
+`curl -X POST ${BASE}/api/leads/view/email \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "leadenrich_id": "abc123def456",
+    "system_prompt": "You are a B2B sales AI for Acme Inc..."
+  }'`,
         response:
 `{
   "lead_id": "abc123def456",
@@ -124,17 +134,27 @@ export default function ApiDocPage() {
 
   "all_emails": ["john.doe@acme.com", "jdoe@acme.com"],
   "activity_emails": ["john@personalsite.com"],
-  "activity_phones": []
+  "activity_phones": [],
+
+  // Only present when system_prompt is provided:
+  "ai_generated": {
+    "email_template": "{\"subject\": \"Quick idea for John at Acme\", \"body\": \"Hi John, ...\"}"
+  }
 }`,
       },
     ],
 
     outreach: [
       {
-        id: 'outreach-enrich', method: 'GET', path: '/api/leads/view/outreach', title: 'Outreach Enrichment',
-        desc: 'Returns AI-generated outreach assets — personalised cold email, LinkedIn note, multi-step follow-up sequence, best send time, and pitch hooks. Pass the leadenrich_id returned from the bulk enrich job results.',
+        id: 'outreach-enrich', method: 'POST', path: '/api/leads/view/outreach', title: 'Outreach Enrichment',
+        desc: 'Returns AI-generated outreach assets — personalised cold email, LinkedIn note, multi-step follow-up sequence, best send time, and pitch hooks. Pass leadenrich_id from bulk job results. Optional: pass system_prompt to generate fresh outreach copy live using your product context — returned in ai_generated.outreach alongside the stored data.',
         curl:
-`curl "${BASE}/api/leads/view/outreach?leadenrich_id=abc123def456"`,
+`curl -X POST ${BASE}/api/leads/view/outreach \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "leadenrich_id": "abc123def456",
+    "system_prompt": "You are a B2B sales AI for Acme Inc..."
+  }'`,
         response:
 `{
   "lead_id": "abc123def456",
@@ -159,11 +179,12 @@ export default function ApiDocPage() {
 
   "best_time": "Tuesday 10–11am",
   "warm_signal": "Posted about platform engineering 3 days ago",
+  "best_channel": "email",
+  "outreach_angle": "Platform scaling pain",
 
-  "pitch_intelligence": {
-    "primary_pitch": "Help John's team ship faster with automated pipelines",
-    "pain_points": ["Scaling infrastructure", "Tech debt"],
-    "value_props": ["60% fewer deployment failures"]
+  // Only present when system_prompt is provided:
+  "ai_generated": {
+    "outreach": "{\"cold_email\": {\"subject\": \"...\", \"body\": \"...\"}, \"linkedin_note\": \"...\", \"best_channel\": \"email\", \"outreach_angle\": \"...\"}"
   }
 }`,
       },
@@ -171,10 +192,15 @@ export default function ApiDocPage() {
 
     company: [
       {
-        id: 'company-enrich', method: 'GET', path: '/api/leads/view/company', title: 'Company Enrichment',
-        desc: 'Returns full company data — identity, profile, website intelligence, market signals, intent signals, scores, and tags. Pass the leadenrich_id returned from the bulk enrich job results.',
+        id: 'company-enrich', method: 'POST', path: '/api/leads/view/company', title: 'Company Enrichment',
+        desc: 'Returns full company data — identity, profile, website intelligence, market signals, intent signals, scores, and tags. Pass leadenrich_id from bulk job results. Optional: pass system_prompt to get an AI-generated account analysis (fit summary, pain points, buying signals, ICP score) in ai_generated.company_analysis.',
         curl:
-`curl "${BASE}/api/leads/view/company?leadenrich_id=abc123def456"`,
+`curl -X POST ${BASE}/api/leads/view/company \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "leadenrich_id": "abc123def456",
+    "system_prompt": "You are a B2B sales AI for Acme Inc..."
+  }'`,
         response:
 `{
   "lead_id": "abc123def456",
@@ -220,6 +246,11 @@ export default function ApiDocPage() {
   "tags": {
     "company_tags": ["series-b", "dev-tools", "scaling", "hiring"],
     "account_pitch": { "hook": "Series B momentum + active hiring = ideal timing" }
+  },
+
+  // Only present when system_prompt is provided:
+  "ai_generated": {
+    "company_analysis": "{\"fit_summary\": \"Strong ICP match — Series B SaaS scaling fast\", \"key_pain_points\": [\"Infrastructure scaling\", \"Deployment reliability\"], \"buying_signals\": [\"Active hiring\", \"Recent funding\"], \"recommended_approach\": \"Lead with ROI on deployment failures\", \"icp_score\": 82}"
   }
 }`,
       },
@@ -391,11 +422,147 @@ export default function ApiDocPage() {
 }`,
       },
     ],
+
+    // ── System Prompt Endpoints ───────────────────────────────────────────────
+
+    sysprompt: [
+      {
+        id: 'sp-generate', method: 'GET', path: '/api/v1/system-prompt/generate', title: 'Generate System Prompt',
+        desc: 'Returns the fully assembled system prompt for your organisation. Built from three layers: (1) hardcoded platform baseline, (2) your workspace ICP config (product, tone, banned phrases, etc.), (3) any active dynamic prompt sections saved for your org. Use the returned system_prompt string directly in your AI calls. No auth required.',
+        curl:
+`curl "${BASE}/api/v1/system-prompt/generate?org_id=YOUR_ORG_ID"`,
+        response:
+`{
+  "system_prompt": "You are an AI-powered lead intelligence assistant...\\n\\n---\\n\\n## Tenant Configuration\\n- Product: Acme Sales Intelligence\\n- Tone: peer\\n- Target titles: VP Sales, Head of Growth\\n- Banned phrases: synergy, game-changer\\n\\n---\\n\\nOnly reference verified data from enriched lead profiles.",
+
+  "layers": {
+    "default": "You are an AI-powered lead intelligence assistant...",
+    "workspace": "## Tenant Configuration\\n- Product: Acme Sales Intelligence...",
+    "dynamic": [
+      {
+        "id": "d1e2f3a4-...",
+        "name": "Data Accuracy Rule",
+        "key": "restrictions",
+        "content": "Only reference verified data from enriched lead profiles.",
+        "priority": 50
+      }
+    ]
+  }
+}`,
+      },
+      {
+        id: 'sp-default', method: 'GET', path: '/api/v1/system-prompt/default', title: 'Get Default Prompt',
+        desc: 'Returns the hardcoded platform baseline system prompt. This is always the first layer in every generated prompt — you cannot override it, but you can extend it with dynamic sections. No auth required.',
+        curl:
+`curl "${BASE}/api/v1/system-prompt/default"`,
+        response:
+`{
+  "system_prompt": "You are an AI-powered lead intelligence assistant for the WorksBuddy Lead Enrichment platform.\\n\\nYour role is to help sales and marketing teams understand, score, and engage with their leads effectively.\\n\\n## Core Capabilities\\n...",
+  "description": "Hardcoded platform baseline — always included in the generated prompt."
+}`,
+      },
+      {
+        id: 'sp-list', method: 'GET', path: '/api/v1/system-prompt/prompts', title: 'List Dynamic Sections',
+        desc: 'List all dynamic prompt sections saved for your organisation. Each section is injected into the generated system prompt in priority order (lower number = earlier). No auth required.',
+        curl:
+`curl "${BASE}/api/v1/system-prompt/prompts?org_id=YOUR_ORG_ID"`,
+        response:
+`{
+  "org_id": "org_abc123",
+  "count": 2,
+  "prompts": [
+    {
+      "id": "d1e2f3a4-...",
+      "org_id": "org_abc123",
+      "name": "Data Accuracy Rule",
+      "key": "restrictions",
+      "content": "Only reference verified data from enriched lead profiles.",
+      "is_active": true,
+      "priority": 50,
+      "created_at": "2025-03-30T10:00:00+00:00",
+      "updated_at": "2025-03-30T10:00:00+00:00"
+    },
+    {
+      "id": "e5f6a7b8-...",
+      "org_id": "org_abc123",
+      "name": "Outreach Style",
+      "key": "tone",
+      "content": "Always open with a genuine observation about the lead's recent activity before pitching.",
+      "is_active": true,
+      "priority": 100,
+      "created_at": "2025-03-30T11:00:00+00:00",
+      "updated_at": "2025-03-30T11:00:00+00:00"
+    }
+  ]
+}`,
+      },
+      {
+        id: 'sp-create', method: 'POST', path: '/api/v1/system-prompt/prompts', title: 'Add Dynamic Section',
+        desc: 'Add a new dynamic prompt section. It will be appended to the generated prompt according to its priority. Use key as a stable identifier for your section (e.g. "tone", "restrictions", "context"). No auth required.',
+        curl:
+`curl -X POST "${BASE}/api/v1/system-prompt/prompts?org_id=YOUR_ORG_ID" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "name": "Data Accuracy Rule",
+    "key": "restrictions",
+    "content": "Only reference verified data from enriched lead profiles. Never fabricate contact details.",
+    "is_active": true,
+    "priority": 50
+  }'`,
+        response:
+`{
+  "id": "d1e2f3a4-5678-...",
+  "org_id": "org_abc123",
+  "name": "Data Accuracy Rule",
+  "key": "restrictions",
+  "content": "Only reference verified data from enriched lead profiles. Never fabricate contact details.",
+  "is_active": true,
+  "priority": 50,
+  "created_at": "2025-03-30T10:00:00+00:00",
+  "updated_at": "2025-03-30T10:00:00+00:00"
+}`,
+      },
+      {
+        id: 'sp-update', method: 'PUT', path: '/api/v1/system-prompt/prompts/{prompt_id}', title: 'Update Dynamic Section',
+        desc: 'Update any field of an existing dynamic prompt section. Only the fields you send will be updated. No auth required.',
+        curl:
+`curl -X PUT "${BASE}/api/v1/system-prompt/prompts/d1e2f3a4-5678-...?org_id=YOUR_ORG_ID" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "content": "Only use verified enrichment data. Highlight confidence levels when uncertain.",
+    "priority": 40
+  }'`,
+        response:
+`{
+  "id": "d1e2f3a4-5678-...",
+  "org_id": "org_abc123",
+  "name": "Data Accuracy Rule",
+  "key": "restrictions",
+  "content": "Only use verified enrichment data. Highlight confidence levels when uncertain.",
+  "is_active": true,
+  "priority": 40,
+  "created_at": "2025-03-30T10:00:00+00:00",
+  "updated_at": "2025-03-30T12:30:00+00:00"
+}`,
+      },
+      {
+        id: 'sp-delete', method: 'DELETE', path: '/api/v1/system-prompt/prompts/{prompt_id}', title: 'Delete Dynamic Section',
+        desc: 'Permanently removes a dynamic prompt section. The next call to /generate will no longer include it. No auth required.',
+        curl:
+`curl -X DELETE "${BASE}/api/v1/system-prompt/prompts/d1e2f3a4-5678-...?org_id=YOUR_ORG_ID"`,
+        response:
+`{
+  "success": true,
+  "deleted_id": "d1e2f3a4-5678-..."
+}`,
+      },
+    ],
   }
 
   const METHOD_COLOR = {
     GET:    { bg: 'rgba(16,185,129,0.12)', color: '#10b981', border: 'rgba(16,185,129,0.3)' },
     POST:   { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', border: 'rgba(99,102,241,0.3)' },
+    PUT:    { bg: 'rgba(245,158,11,0.12)', color: '#f59e0b', border: 'rgba(245,158,11,0.3)' },
     DELETE: { bg: 'rgba(239,68,68,0.12)',  color: '#ef4444', border: 'rgba(239,68,68,0.3)' },
   }
 
