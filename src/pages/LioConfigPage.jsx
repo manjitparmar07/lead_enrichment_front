@@ -292,7 +292,7 @@ export default function LioConfigPage() {
   const [saving,         setSaving]         = useState(false)
   const [dirty,          setDirty]          = useState(false)
   const [selected,       setSelected]       = useState('identity')
-  const [view,           setView]           = useState('enrichment') // 'enrichment' | 'module' | 'models'
+  const [view,           setView]           = useState('module') // 'module' | 'models'
   const [enrichPrompt,   setEnrichPrompt]   = useState('')
   const [enrichModel,    setEnrichModel]    = useState('')
   const [enrichDirty,    setEnrichDirty]    = useState(false)
@@ -303,7 +303,7 @@ export default function LioConfigPage() {
     try {
       const [data, promptData] = await Promise.all([
         apiFetch('/api/v1/ai/config'),
-        apiFetch('/api/lio/prompt'),
+        apiFetch('/api/leads/lio/prompt'),
       ])
       if (data.prompts && Array.isArray(data.prompts)) {
         setModules(data.prompts)
@@ -344,7 +344,7 @@ export default function LioConfigPage() {
   const handleEnrichSave = async () => {
     setEnrichSaving(true)
     try {
-      await apiFetch('/api/lio/prompt', {
+      await apiFetch('/api/leads/lio/prompt', {
         method: 'POST',
         body: JSON.stringify({ system_prompt: enrichPrompt, model: enrichModel }),
       })
@@ -491,20 +491,6 @@ export default function LioConfigPage() {
 
           <div style={{ borderTop: '1px solid var(--border-1)', marginTop: 4 }}>
             <button
-              onClick={() => setView('enrichment')}
-              style={{
-                width: '100%', padding: '9px 14px', border: 'none', cursor: 'pointer', textAlign: 'left',
-                background: view === 'enrichment' ? 'rgba(16,185,129,0.08)' : 'transparent',
-                borderLeft: `3px solid ${view === 'enrichment' ? '#10b981' : 'transparent'}`,
-                display: 'flex', alignItems: 'center', gap: 9, transition: 'all 0.12s',
-              }}>
-              <span style={{ fontSize: 14 }}>⚙</span>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color: view === 'enrichment' ? 'var(--text-1)' : 'var(--text-2)' }}>Enrichment Prompt</div>
-                <div style={{ fontSize: 9, color: 'var(--text-3)' }}>Used during bulk API</div>
-              </div>
-            </button>
-            <button
               onClick={() => setView('models')}
               style={{
                 width: '100%', padding: '9px 14px', border: 'none', cursor: 'pointer', textAlign: 'left',
@@ -521,59 +507,21 @@ export default function LioConfigPage() {
         {/* ── Main content area ── */}
         <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: '20px 24px' }}>
 
-          {view === 'enrichment' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 800 }}>
+          {/* ── Enrichment Prompt — always visible at top ── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 860, marginBottom: 24, padding: '14px 16px', borderRadius: 12, background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-1)', marginBottom: 4 }}>Enrichment System Prompt</div>
-                <div style={{ fontSize: 12, color: 'var(--text-3)', lineHeight: 1.6 }}>
-                  This prompt is used as the system instruction for the main LLM call during bulk enrichment.
-                  It takes priority over the default prompt. Leave blank to use the default.
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#10b981', marginBottom: 2 }}>⚙ Enrichment System Prompt</div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                  Main LLM instruction used during bulk enrichment. Leave blank to use the default.
                 </div>
               </div>
-
-              <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.2)', fontSize: 11, color: '#6ee7b7', lineHeight: 1.5 }}>
-                Default: <code style={{ background: 'rgba(16,185,129,0.12)', padding: '1px 6px', borderRadius: 3, fontFamily: 'monospace' }}>"Expert B2B lead intelligence analyst. Return ONLY valid JSON."</code>
-              </div>
-
-              <div>
-                <div style={labelStyle}>System Prompt</div>
-                <textarea
-                  value={enrichPrompt}
-                  onChange={e => { setEnrichPrompt(e.target.value); setEnrichDirty(true) }}
-                  rows={12}
-                  placeholder={'Expert B2B lead intelligence analyst. Return ONLY valid JSON.'}
-                  style={{
-                    width: '100%', boxSizing: 'border-box', padding: '12px 14px', borderRadius: 9,
-                    border: '1.5px solid rgba(16,185,129,0.3)', background: 'var(--bg-base)',
-                    color: 'var(--text-1)', fontSize: 12, lineHeight: 1.7,
-                    fontFamily: "'JetBrains Mono','Fira Code',monospace",
-                    resize: 'vertical', outline: 'none',
-                  }}
-                />
-                <div style={{ display: 'flex', gap: 12, fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>
-                  <span>{enrichPrompt.length} chars</span>
-                  <span>·</span>
-                  <span>~{Math.round(enrichPrompt.length / 4)} tokens</span>
-                </div>
-              </div>
-
-              <div>
-                <div style={labelStyle}>Model Override (optional)</div>
-                <ModelSelector
-                  value={enrichModel}
-                  onChange={v => { setEnrichModel(v); setEnrichDirty(true) }}
-                  accentColor="#10b981"
-                  models={llmModels}
-                />
-                <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 4 }}>Leave default to use the globally configured model.</div>
-              </div>
-
               <button
                 onClick={handleEnrichSave}
                 disabled={enrichSaving || !enrichDirty}
                 style={{
-                  alignSelf: 'flex-start', padding: '9px 24px', borderRadius: 8,
-                  border: 'none', fontSize: 12, fontWeight: 700, cursor: enrichSaving || !enrichDirty ? 'not-allowed' : 'pointer',
+                  flexShrink: 0, padding: '6px 16px', borderRadius: 7, fontSize: 11, fontWeight: 700,
+                  cursor: enrichSaving || !enrichDirty ? 'not-allowed' : 'pointer',
                   background: enrichDirty ? 'linear-gradient(135deg,#10b981,#059669)' : 'var(--bg-base)',
                   border: enrichDirty ? 'none' : '1px solid var(--border-1)',
                   color: enrichDirty ? '#fff' : 'var(--text-3)',
@@ -582,7 +530,27 @@ export default function LioConfigPage() {
                 {enrichSaving ? 'Saving…' : enrichDirty ? 'Save Prompt' : 'Saved'}
               </button>
             </div>
-          )}
+            <textarea
+              value={enrichPrompt}
+              onChange={e => { setEnrichPrompt(e.target.value); setEnrichDirty(true) }}
+              rows={4}
+              placeholder={'Expert B2B lead intelligence analyst. Return ONLY valid JSON.'}
+              style={{
+                width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 8,
+                border: '1.5px solid rgba(16,185,129,0.3)', background: 'var(--bg-base)',
+                color: 'var(--text-1)', fontSize: 12, lineHeight: 1.7,
+                fontFamily: "'JetBrains Mono','Fira Code',monospace",
+                resize: 'vertical', outline: 'none',
+              }}
+            />
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 10, color: 'var(--text-3)' }}>{enrichPrompt.length} chars · ~{Math.round(enrichPrompt.length / 4)} tokens</span>
+              <div style={{ flex: '0 0 220px' }}>
+                <ModelSelector value={enrichModel} onChange={v => { setEnrichModel(v); setEnrichDirty(true) }} accentColor="#10b981" models={llmModels} />
+              </div>
+              <span style={{ fontSize: 10, color: 'var(--text-3)' }}>Model override (optional)</span>
+            </div>
+          </div>
 
           {view === 'module' && activeModule && (
             <ModuleEditor
