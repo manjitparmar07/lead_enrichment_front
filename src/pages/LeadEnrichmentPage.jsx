@@ -1389,7 +1389,7 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
   const handleStop = async (jobId) => {
     setStopping(p => ({ ...p, [jobId]: true }))
     try {
-      const res = await fetch(`/api/leads/jobs/${jobId}/stop`, { method: 'POST' })
+      const res = await fetch(`${BACKEND}/leads/jobs/${jobId}/stop`, { method: 'POST' })
       if (!res.ok) throw new Error((await res.json()).detail)
       onRefresh()
     } catch (e) {
@@ -1401,7 +1401,7 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
     if (!confirm('Delete this job? This cannot be undone.')) return
     setDeleting(p => ({ ...p, [jobId]: true }))
     try {
-      const res = await fetch(`/api/leads/jobs/${jobId}`, { method: 'DELETE' })
+      const res = await fetch(`${BACKEND}/leads/jobs/${jobId}`, { method: 'DELETE' })
       if (!res.ok) throw new Error((await res.json()).detail)
       onRefresh()
     } catch (e) {
