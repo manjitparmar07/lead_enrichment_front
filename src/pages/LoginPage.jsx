@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { LogIn, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react'
 
-const BACKEND = '/api'
+const BACKEND = `${import.meta.env.VITE_BACKEND_URL || ''}/api`
 
 export default function LoginPage({ onLogin }) {
   const [email, setEmail]       = useState('')
