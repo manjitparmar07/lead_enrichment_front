@@ -1799,6 +1799,19 @@ function _RegenJsonView({ data, leadenrich_id, endpoint, viewTab, onRegenerated,
   )
 }
 
+function LinkedInEnrichView({ data, leadenrich_id, onRegenerated }) {
+  return (
+    <_RegenJsonView
+      data={data}
+      leadenrich_id={leadenrich_id}
+      endpoint="crm-brief"
+      viewTab="linkedin"
+      onRegenerated={onRegenerated}
+      accentColor="#6366f1"
+    />
+  )
+}
+
 function OutreachEnrichView({ data, leadenrich_id, onRegenerated }) {
   return (
     <_RegenJsonView
@@ -1938,6 +1951,13 @@ function LeadEnrichView({ lead }) {
                 {err}
               </div>
             )}
+            {!isLoading && !err && data && tab.id === 'linkedin' && (
+              <LinkedInEnrichView
+                data={data}
+                leadenrich_id={leadenrich_id}
+                onRegenerated={fresh => setCache(p => ({ ...p, linkedin: fresh }))}
+              />
+            )}
             {!isLoading && !err && data && tab.id === 'outreach' && (
               <OutreachEnrichView
                 data={data}
@@ -1952,7 +1972,7 @@ function LeadEnrichView({ lead }) {
                 onRegenerated={fresh => setCache(p => ({ ...p, company: fresh }))}
               />
             )}
-            {!isLoading && !err && data && tab.id !== 'outreach' && tab.id !== 'company' && (
+            {!isLoading && !err && data && tab.id !== 'linkedin' && tab.id !== 'outreach' && tab.id !== 'company' && (
               <EnrichJsonView data={data} />
             )}
             {!isLoading && !err && !data && (
