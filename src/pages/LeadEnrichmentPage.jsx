@@ -1381,6 +1381,7 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
   const [filterStatus, setFilterStatus] = useState('')
   const [searchQ, setSearchQ] = useState('')
   const [stopping, setStopping] = useState({})
+  const [rerunning, setRerunning] = useState({})
   const [deleting, setDeleting] = useState({})
 
   const toggleExpand = (jobId) =>
@@ -1390,11 +1391,26 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
     setStopping(p => ({ ...p, [jobId]: true }))
     try {
       const res = await fetch(`${BACKEND}/leads/jobs/${jobId}/stop`, { method: 'POST' })
-      if (!res.ok) throw new Error((await res.json()).detail)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail)
+      toast.success(`Job stopped · ${data.snapshots_cancelled ?? 0} snapshot(s) cancelled`)
       onRefresh()
     } catch (e) {
-      alert(`Stop failed: ${e.message}`)
+      toast.error(`Stop failed: ${e.message}`)
     } finally { setStopping(p => ({ ...p, [jobId]: false })) }
+  }
+
+  const handleRerun = async (jobId) => {
+    setRerunning(p => ({ ...p, [jobId]: true }))
+    try {
+      const res = await fetch(`${BACKEND}/leads/jobs/${jobId}/rerun`, { method: 'POST' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail)
+      toast.success(`Job restarted · new snapshot: ${data.new_snapshot_id?.slice(0, 12) ?? '—'}`)
+      onRefresh()
+    } catch (e) {
+      toast.error(`Rerun failed: ${e.message}`)
+    } finally { setRerunning(p => ({ ...p, [jobId]: false })) }
   }
 
   const handleDelete = async (jobId) => {
@@ -1643,30 +1659,60 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
                   <List size={11} /> View {done} lead(s) <ArrowRight size={11} />
                 </GhostBtn>
               )}
-              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 6, alignItems: 'center' }}>
+                {/* Stop — visible while job is active */}
                 {['running','pending','fallback'].includes(job.status) && (
                   <button
                     onClick={() => handleStop(job.id)}
                     disabled={stopping[job.id]}
+                    title="Stop this job and cancel BrightData snapshots"
                     style={{
-                      padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                      padding: '5px 13px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                      cursor: stopping[job.id] ? 'not-allowed' : 'pointer',
                       border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)',
                       color: '#f59e0b', opacity: stopping[job.id] ? 0.5 : 1,
+                      display: 'flex', alignItems: 'center', gap: 5,
                     }}
                   >
-                    {stopping[job.id] ? 'Stopping…' : '⏹ Stop'}
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                    {stopping[job.id] ? 'Stopping…' : 'Stop'}
                   </button>
                 )}
+
+                {/* Rerun — visible when stopped/failed/cancelled/stale */}
+                {['cancelled','failed','completed_with_errors','stale'].includes(job.status) && (
+                  <button
+                    onClick={() => handleRerun(job.id)}
+                    disabled={rerunning[job.id]}
+                    title="Rerun this job via BrightData"
+                    style={{
+                      padding: '5px 13px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                      cursor: rerunning[job.id] ? 'not-allowed' : 'pointer',
+                      border: '1px solid rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.1)',
+                      color: '#a5b4fc', opacity: rerunning[job.id] ? 0.5 : 1,
+                      display: 'flex', alignItems: 'center', gap: 5,
+                    }}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                      strokeLinecap="round" strokeLinejoin="round"
+                      style={rerunning[job.id] ? { animation: 'spin 0.8s linear infinite' } : {}}>
+                      <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/>
+                    </svg>
+                    {rerunning[job.id] ? 'Rerunning…' : 'Rerun'}
+                  </button>
+                )}
+
                 <button
                   onClick={() => handleDelete(job.id)}
                   disabled={deleting[job.id]}
                   style={{
-                    padding: '4px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                    padding: '5px 13px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                    cursor: deleting[job.id] ? 'not-allowed' : 'pointer',
                     border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.06)',
                     color: '#ef4444', opacity: deleting[job.id] ? 0.5 : 1,
                   }}
                 >
-                  {deleting[job.id] ? 'Deleting…' : '🗑 Delete'}
+                  {deleting[job.id] ? 'Deleting…' : 'Delete'}
                 </button>
               </div>
             </div>

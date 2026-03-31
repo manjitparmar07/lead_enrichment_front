@@ -101,6 +101,37 @@ export default function ApiDocPage() {
 //   "score_tier": "hot"
 // }`,
       },
+      {
+        id: 'job-stop', method: 'POST', path: '/api/leads/jobs/{job_id}/stop', title: 'Stop / Cancel Job',
+        desc: 'Cancels a running or pending enrichment job. Marks the job and all pending sub-jobs as cancelled in the database, and calls the BrightData snapshot cancel API to immediately stop any in-progress scrape. Any webhook results that arrive after cancellation are automatically discarded. Cancellable statuses: running, pending, fallback.',
+        curl:
+`curl -X POST ${BASE}/api/leads/jobs/JOB_ID/stop`,
+        response:
+`{
+  "job_id": "a1b2c3d4-e5f6-...",
+  "status": "cancelled",
+  "snapshots_cancelled": 4
+}
+
+// snapshots_cancelled = N → number of BrightData chunk snapshots stopped
+// snapshots_cancelled = 0 → job had no BrightData snapshots (queue/fallback path)`,
+      },
+      {
+        id: 'job-rerun', method: 'POST', path: '/api/leads/jobs/{job_id}/rerun', title: 'Rerun Job',
+        desc: 'Reruns the BrightData snapshot for a failed or cancelled enrichment job. Calls the BrightData rerun API using the existing snapshot_id, updates the job with the new snapshot_id returned by BrightData, resets status to running, and clears all sub-job progress counters. Rerunnable statuses: failed, cancelled, completed. Returns 400 if job has no snapshot_id (was processed via queue/fallback, not BrightData batch).',
+        curl:
+`curl -X POST ${BASE}/api/leads/jobs/JOB_ID/rerun`,
+        response:
+`{
+  "job_id": "a1b2c3d4-e5f6-...",
+  "status": "running",
+  "old_snapshot_id": "s_abc123",
+  "new_snapshot_id": "s_xyz789"
+}
+
+// old_snapshot_id → the previous BrightData snapshot
+// new_snapshot_id → the fresh snapshot BrightData created for the rerun`,
+      },
     ],
 
     // ── Enrichment View APIs ──────────────────────────────────────────────────
