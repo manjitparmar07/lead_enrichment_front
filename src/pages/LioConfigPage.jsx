@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 
-const API = (import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}:8020`)
+const API = ''
 
 function authHeader() {
   const token = localStorage.getItem('wb_ai_token')
@@ -511,9 +511,9 @@ export default function LioConfigPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, maxWidth: 860, marginBottom: 24, padding: '14px 16px', borderRadius: 12, background: 'rgba(16,185,129,0.04)', border: '1px solid rgba(16,185,129,0.2)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#10b981', marginBottom: 2 }}>⚙ Enrichment System Prompt</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#10b981', marginBottom: 2 }}>⚙ CRM Brief Prompt</div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
-                  Main LLM instruction used during bulk enrichment. Leave blank to use the default.
+                  Runs as a <strong style={{ color: 'var(--text-2)' }}>second LLM call</strong> after JSON enrichment — produces a human-readable brief stored as <code style={{ fontSize: 10, background: 'rgba(16,185,129,0.12)', padding: '1px 4px', borderRadius: 3 }}>crm_brief</code> in the output &amp; forwarded to LIO. Leave blank to skip.
                 </div>
               </div>
               <button
