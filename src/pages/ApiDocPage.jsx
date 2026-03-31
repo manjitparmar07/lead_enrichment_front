@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Copy, Check, Eye, EyeOff, Key, Loader } from 'lucide-react'
 
-const BACKEND = (import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}`) + '/api'
+const BACKEND = '/api'
 const BASE    = BACKEND.replace('/api', '')
 const TOKEN   = '<YOUR_TOKEN>'
 

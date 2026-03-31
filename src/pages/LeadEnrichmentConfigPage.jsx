@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 
-const API = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8020'
+const API = ''
 
 const CATEGORY_LABELS = {
   enrichment: 'Data Enrichment',

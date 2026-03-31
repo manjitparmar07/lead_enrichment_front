@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'react-hot-toast'
 
-const BACKEND = (import.meta.env.VITE_BACKEND_URL || `${window.location.protocol}//${window.location.hostname}`) + '/api'
+const BACKEND = '/api'
 
 const getToken = () => localStorage.getItem('wb_ai_token') || ''
 const jsonHdr  = () => ({ 'Content-Type': 'application/json' })
