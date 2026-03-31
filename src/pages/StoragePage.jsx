@@ -2,7 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 
-const API_BASE = '/api'
+const API_BASE = `${import.meta.env.VITE_BACKEND_URL || 'https://leadenrichment-production-5b78.up.railway.app'}/api`
 
 
 // ── Styles ─────────────────────────────────────────────────────────────────

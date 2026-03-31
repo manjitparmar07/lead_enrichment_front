@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import { Copy, Check, Eye, EyeOff, Key, Loader } from 'lucide-react'
 
-const BACKEND = '/api'
-const BASE    = BACKEND.replace('/api', '')
+const BASE = import.meta.env.VITE_BACKEND_URL || 'https://leadenrichment-production-5b78.up.railway.app'
 const TOKEN   = '<YOUR_TOKEN>'
 
 const PROFILE_EXAMPLE = `{

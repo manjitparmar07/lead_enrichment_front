@@ -4,7 +4,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import toast from 'react-hot-toast'
 
-const API = ''
+const API = import.meta.env.VITE_BACKEND_URL || 'https://leadenrichment-production-5b78.up.railway.app'
 
 function authHeader() {
   const token = localStorage.getItem('wb_ai_token')
