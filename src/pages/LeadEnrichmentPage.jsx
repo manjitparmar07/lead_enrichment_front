@@ -1068,7 +1068,7 @@ function BulkTab({ onDone }) {
     if (!urls.length) return toast.error('No valid LinkedIn URLs found')
     setLoading(true); setJob(null)
     try {
-      const body = { token: getToken(), linkedin_urls: urls, forward_to_lio: true }
+      const body = { token: getToken(), linkedin_urls: urls, forward_to_lio: false }
       if (webhookUrl.trim()) body.webhook_url = webhookUrl.trim()
       const r = await fetch(`${BACKEND}/leads/enrich/bulk`, {
         method: 'POST', headers: jsonHdr(), body: JSON.stringify(body),
