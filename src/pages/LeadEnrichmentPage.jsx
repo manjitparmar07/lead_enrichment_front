@@ -185,7 +185,7 @@ export default function LeadEnrichmentPage() {
   }, [])
 
   useEffect(() => {
-    if (activeTab === 'results') fetchLeads()
+    if (activeTab === 'results') { fetchLeads(); fetchJobs() }
     if (activeTab === 'jobs') fetchJobs()
   }, [activeTab, fetchLeads, fetchJobs])
 
@@ -319,7 +319,7 @@ export default function LeadEnrichmentPage() {
         />
       )}
       {activeTab === 'jobs' && <JobsTab jobs={jobs} onRefresh={fetchJobs}
-        onSelectJob={jid => { setFilters(f => ({...f, job_id: jid})); setPage(1); setActiveTab('results'); fetchLeads() }} />}
+        onSelectJob={jid => { setFilters(f => ({...f, job_id: jid})); setPage(1); setActiveTab('results') }} />}
     </div>
   )
 }
