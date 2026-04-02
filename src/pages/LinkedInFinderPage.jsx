@@ -64,7 +64,6 @@ export default function LinkedInFinderPage() {
   const [rows, setRows]               = useState([EMPTY_ROW()])
   const [numResults, setNumResults]   = useState(10)
   const [filters, setFilters]         = useState(EMPTY_FILTERS())
-  const [showAdvanced, setShowAdvanced] = useState(false)
   const [searching, setSearching]     = useState(false)
   const [results, setResults]         = useState([])
   const [allUrls, setAllUrls]         = useState([])
@@ -243,88 +242,85 @@ export default function LinkedInFinderPage() {
             </div>
           </div>
 
-          {/* Advanced Filters */}
+          {/* Advanced Filters — always visible cards */}
           <div style={{ marginBottom: 16 }}>
-            <button onClick={() => setShowAdvanced(v => !v)} style={{
-              display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
-              cursor: 'pointer', padding: '4px 0', color: 'var(--text-3)', fontSize: 12, fontWeight: 600,
-            }}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                strokeLinecap="round" strokeLinejoin="round"
-                style={{ transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
-                <polyline points="6 9 12 15 18 9"/>
-              </svg>
-              Advanced Filters
-              {(filters.gl || filters.tbs || filters.excludeKeywords || filters.exactTitle) && (
-                <span style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
-                  {[filters.gl, filters.tbs, filters.excludeKeywords, filters.exactTitle].filter(Boolean).length} active
-                </span>
-              )}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                Advanced Filters
+                {(filters.gl || filters.tbs || filters.excludeKeywords || filters.exactTitle) && (
+                  <span style={{ marginLeft: 8, background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10, textTransform: 'none', letterSpacing: 0 }}>
+                    {[filters.gl, filters.tbs, filters.excludeKeywords, filters.exactTitle].filter(Boolean).length} active
+                  </span>
+                )}
+              </div>
+              <button onClick={() => setFilters(EMPTY_FILTERS())} style={{ ...ghostBtn, fontSize: 10 }}>Reset</button>
+            </div>
 
-            {showAdvanced && (
-              <div style={{
-                marginTop: 10, padding: 16, background: 'var(--bg-card)',
-                border: '1px solid var(--border-1)', borderRadius: 10,
-                display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14,
-              }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10 }}>
 
-                {/* Google Country */}
-                <div>
-                  <label style={filterLabel}>Google Country <span style={filterHint}>(gl)</span></label>
-                  <select value={filters.gl} onChange={e => updateFilter('gl', e.target.value)} style={filterSelect}>
-                    {GL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <div style={filterDesc}>Localises search results to a specific country</div>
-                </div>
+              {/* Google Country */}
+              <div style={filterCard}>
+                <div style={filterCardIcon}>🌍</div>
+                <label style={filterLabel}>Google Country <span style={filterHint}>(gl)</span></label>
+                <select value={filters.gl} onChange={e => updateFilter('gl', e.target.value)} style={filterSelect}>
+                  {GL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <div style={filterDesc}>Localise results to a country</div>
+              </div>
 
-                {/* Language */}
-                <div>
-                  <label style={filterLabel}>Language <span style={filterHint}>(hl)</span></label>
-                  <select value={filters.hl} onChange={e => updateFilter('hl', e.target.value)} style={filterSelect}>
-                    {HL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <div style={filterDesc}>Interface language for Google results</div>
-                </div>
+              {/* Language */}
+              <div style={filterCard}>
+                <div style={filterCardIcon}>🗣️</div>
+                <label style={filterLabel}>Language <span style={filterHint}>(hl)</span></label>
+                <select value={filters.hl} onChange={e => updateFilter('hl', e.target.value)} style={filterSelect}>
+                  {HL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <div style={filterDesc}>Google interface language</div>
+              </div>
 
-                {/* Date range */}
-                <div>
-                  <label style={filterLabel}>Date Range <span style={filterHint}>(tbs)</span></label>
-                  <select value={filters.tbs} onChange={e => updateFilter('tbs', e.target.value)} style={filterSelect}>
-                    {TBS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <div style={filterDesc}>Filter by when Google indexed the profile</div>
-                </div>
+              {/* Date range */}
+              <div style={filterCard}>
+                <div style={filterCardIcon}>📅</div>
+                <label style={filterLabel}>Date Range <span style={filterHint}>(tbs)</span></label>
+                <select value={filters.tbs} onChange={e => updateFilter('tbs', e.target.value)} style={filterSelect}>
+                  {TBS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <div style={filterDesc}>When Google indexed the profile</div>
+              </div>
 
-                {/* Exclude keywords */}
-                <div>
-                  <label style={filterLabel}>Exclude Keywords</label>
-                  <input
-                    value={filters.excludeKeywords}
-                    onChange={e => updateFilter('excludeKeywords', e.target.value)}
-                    placeholder="e.g. recruiter, sales, intern"
-                    style={{ ...filterSelect, fontFamily: 'inherit' }}
-                  />
-                  <div style={filterDesc}>Comma-separated words to exclude from results</div>
-                </div>
+              {/* Exclude keywords */}
+              <div style={filterCard}>
+                <div style={filterCardIcon}>🚫</div>
+                <label style={filterLabel}>Exclude Keywords</label>
+                <input
+                  value={filters.excludeKeywords}
+                  onChange={e => updateFilter('excludeKeywords', e.target.value)}
+                  placeholder="recruiter, sales, intern"
+                  style={{ ...filterSelect, fontFamily: 'inherit' }}
+                />
+                <div style={filterDesc}>Comma-separated words to exclude</div>
+              </div>
 
-                {/* Exact title toggle — spans full row as footer */}
-                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 10, paddingTop: 4, borderTop: '1px solid var(--border-1)' }}>
+              {/* Exact title match */}
+              <div style={{ ...filterCard, justifyContent: 'center', alignItems: 'flex-start' }}>
+                <div style={filterCardIcon}>🎯</div>
+                <label style={filterLabel}>Exact Title Match</label>
+                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                   <input
                     type="checkbox"
                     id="exactTitle"
                     checked={filters.exactTitle}
                     onChange={e => updateFilter('exactTitle', e.target.checked)}
-                    style={{ accentColor: '#6366f1', cursor: 'pointer' }}
+                    style={{ accentColor: '#6366f1', cursor: 'pointer', width: 15, height: 15 }}
                   />
-                  <label htmlFor="exactTitle" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', cursor: 'pointer' }}>
-                    Exact title match
+                  <label htmlFor="exactTitle" style={{ fontSize: 12, color: 'var(--text-2)', cursor: 'pointer', fontWeight: filters.exactTitle ? 600 : 400 }}>
+                    {filters.exactTitle ? 'Enabled' : 'Disabled'}
                   </label>
-                  <span style={filterDesc}>Wraps the Role/Title field in quotes for stricter matching</span>
-                  <button onClick={() => setFilters(EMPTY_FILTERS())} style={{ marginLeft: 'auto', ...ghostBtn, fontSize: 10 }}>Reset filters</button>
                 </div>
+                <div style={filterDesc}>Wraps Role/Title in quotes</div>
               </div>
-            )}
+
+            </div>
           </div>
 
           {/* Options row */}
@@ -498,9 +494,14 @@ const ghostBtn = {
   background: 'transparent', color: 'var(--text-2)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
 }
 
-const filterLabel = { display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }
+const filterCard = {
+  background: 'var(--bg-card)', border: '1px solid var(--border-1)', borderRadius: 10,
+  padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6,
+}
+const filterCardIcon = { fontSize: 16, marginBottom: 2 }
+const filterLabel = { display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.04em' }
 const filterHint  = { fontWeight: 400, color: 'var(--text-3)', textTransform: 'none', letterSpacing: 0, fontSize: 10 }
-const filterDesc  = { fontSize: 10, color: 'var(--text-3)', marginTop: 5, lineHeight: 1.4 }
+const filterDesc  = { fontSize: 10, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.4 }
 const filterSelect = {
   width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-1)',
   background: 'var(--bg-base)', color: 'var(--text-1)', fontSize: 12, outline: 'none',
