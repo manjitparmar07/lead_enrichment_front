@@ -8,32 +8,6 @@ const jsonHdr = () => ({ 'Content-Type': 'application/json' })
 const RESULT_OPTIONS = [10, 20, 50, 100]
 const EMPTY_ROW = () => ({ id: Date.now(), role: '', industry: '', location: '', country: '', keywords: '' })
 
-const GL_OPTIONS = [
-  { value: '', label: 'Any country' },
-  { value: 'us', label: 'United States' },
-  { value: 'in', label: 'India' },
-  { value: 'gb', label: 'United Kingdom' },
-  { value: 'ca', label: 'Canada' },
-  { value: 'au', label: 'Australia' },
-  { value: 'sg', label: 'Singapore' },
-  { value: 'ae', label: 'UAE' },
-  { value: 'de', label: 'Germany' },
-  { value: 'fr', label: 'France' },
-  { value: 'nl', label: 'Netherlands' },
-  { value: 'se', label: 'Sweden' },
-  { value: 'br', label: 'Brazil' },
-]
-
-const HL_OPTIONS = [
-  { value: 'en', label: 'English' },
-  { value: 'hi', label: 'Hindi' },
-  { value: 'es', label: 'Spanish' },
-  { value: 'fr', label: 'French' },
-  { value: 'de', label: 'German' },
-  { value: 'pt', label: 'Portuguese' },
-  { value: 'nl', label: 'Dutch' },
-]
-
 const TBS_OPTIONS = [
   { value: '', label: 'Any time' },
   { value: 'qdr:d', label: 'Past 24 hours' },
@@ -42,7 +16,44 @@ const TBS_OPTIONS = [
   { value: 'qdr:y', label: 'Past year' },
 ]
 
-const EMPTY_FILTERS = () => ({ gl: '', hl: 'en', tbs: '', excludeKeywords: '', exactTitle: false })
+const EMPTY_FILTERS = () => ({
+  siteType: 'people',       // 'people' = linkedin.com/in | 'company' = linkedin.com/company
+  jobTitles: '',            // "Founder, CEO" → ("Founder" OR "CEO")
+  locations: '',            // "India, London" → ("India" OR "London")
+  industries: '',           // "SaaS, Fintech" → ("SaaS" OR "Fintech")
+  contextKeywords: '',      // "automation, CRM" → ("automation" OR "CRM")
+  exclusions: '',           // "Intern, Student" → NOT ("Intern" OR "Student")
+  companies: '',            // "Stripe, Shopify" → ("Stripe" OR "Shopify")
+  tbs: '',                  // SerpAPI freshness
+  exactPhrase: '',          // "co-founder at"
+})
+
+// Build ("X" OR "Y" OR "Z") from comma-separated string
+function boolGroup(csv) {
+  const parts = csv.split(',').map(s => s.trim()).filter(Boolean)
+  if (!parts.length) return ''
+  if (parts.length === 1) return `"${parts[0]}"`
+  return `(${parts.map(p => `"${p}"`).join(' OR ')})`
+}
+
+function buildQuery(row, filters) {
+  const base = [row.role, row.industry, row.location, row.country, row.keywords]
+    .map(s => s.trim()).filter(Boolean).join(' ')
+
+  const parts = [base]
+  if (filters.jobTitles)       parts.push(boolGroup(filters.jobTitles))
+  if (filters.locations)       parts.push(boolGroup(filters.locations))
+  if (filters.industries)      parts.push(boolGroup(filters.industries))
+  if (filters.contextKeywords) parts.push(boolGroup(filters.contextKeywords))
+  if (filters.companies)       parts.push(boolGroup(filters.companies))
+  if (filters.exactPhrase)     parts.push(`"${filters.exactPhrase.trim()}"`)
+  if (filters.exclusions) {
+    const ex = filters.exclusions.split(',').map(s => s.trim()).filter(Boolean)
+    if (ex.length) parts.push(`NOT (${ex.map(p => `"${p}"`).join(' OR ')})`)
+  }
+
+  return parts.filter(Boolean).join(' ')
+}
 
 function getOrgId() {
   try {
@@ -51,11 +62,6 @@ function getOrgId() {
     const p = JSON.parse(atob(token.split('.')[1]))
     return p.organization_id || p.org_id || 'default'
   } catch { return 'default' }
-}
-
-function buildQuery({ role, industry, location, country, keywords }, exactTitle = false) {
-  const titlePart = role.trim() ? (exactTitle ? `"${role.trim()}"` : role.trim()) : ''
-  return [titlePart, industry, location, country, keywords].map(s => s.trim()).filter(Boolean).join(' ')
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -75,8 +81,14 @@ export default function LinkedInFinderPage() {
   const [activeTab, setActiveTab]     = useState('search')
 
   const updateFilter = (key, value) => setFilters(f => ({ ...f, [key]: value }))
-
   const orgId = getOrgId()
+
+  const activeFilterCount = [
+    filters.siteType !== 'people',
+    filters.jobTitles, filters.locations, filters.industries,
+    filters.contextKeywords, filters.exclusions, filters.companies,
+    filters.tbs, filters.exactPhrase,
+  ].filter(Boolean).length
 
   // ── History ───────────────────────────────────────────────────────────────
 
@@ -110,7 +122,7 @@ export default function LinkedInFinderPage() {
   // ── Search ────────────────────────────────────────────────────────────────
 
   const handleSearch = async () => {
-    const queries = rows.map(r => buildQuery(r, filters.exactTitle)).filter(Boolean)
+    const queries = rows.map(r => buildQuery(r, filters)).filter(Boolean)
     if (!queries.length) return toast.error('Fill at least one field to search')
 
     setSearching(true); setResults([]); setAllUrls([]); setSelected(new Set())
@@ -163,7 +175,7 @@ export default function LinkedInFinderPage() {
   const toggleExpand = (id) => setExpandedIds(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
 
   return (
-    <div style={{ padding: '24px', maxWidth: 960, margin: '0 auto', fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div style={{ padding: '24px', maxWidth: 1080, margin: '0 auto', fontFamily: "'Inter', system-ui, sans-serif" }}>
 
       {/* Header */}
       <div style={{ marginBottom: 22 }}>
@@ -191,15 +203,12 @@ export default function LinkedInFinderPage() {
 
           {/* Search rows table */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-1)', borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
-
-            {/* Column headers */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 32px', gap: 0, background: 'var(--bg-base)', borderBottom: '1px solid var(--border-1)', padding: '8px 14px' }}>
               {['Role / Title', 'Industry', 'Location', 'Country', 'Keywords', ''].map((h, i) => (
                 <div key={i} style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', paddingRight: 8 }}>{h}</div>
               ))}
             </div>
 
-            {/* Rows */}
             {rows.map((row, idx) => (
               <div key={row.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 32px', gap: 0, borderBottom: idx < rows.length - 1 ? '1px solid var(--border-1)' : 'none', alignItems: 'center' }}>
                 {['role', 'industry', 'location', 'country', 'keywords'].map((field, fi) => (
@@ -229,7 +238,6 @@ export default function LinkedInFinderPage() {
               </div>
             ))}
 
-            {/* Add row footer */}
             <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border-1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <button onClick={addRow} disabled={rows.length >= 20} style={{
                 ...ghostBtn, display: 'flex', alignItems: 'center', gap: 5,
@@ -242,82 +250,149 @@ export default function LinkedInFinderPage() {
             </div>
           </div>
 
-          {/* Advanced Filters — always visible cards */}
+          {/* ── Advanced Filters ─────────────────────────────────────────────── */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Advanced Filters
-                {(filters.gl || filters.tbs || filters.excludeKeywords || filters.exactTitle) && (
-                  <span style={{ marginLeft: 8, background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10, textTransform: 'none', letterSpacing: 0 }}>
-                    {[filters.gl, filters.tbs, filters.excludeKeywords, filters.exactTitle].filter(Boolean).length} active
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 8 }}>
+                Search Filters
+                {activeFilterCount > 0 && (
+                  <span style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 10, textTransform: 'none', letterSpacing: 0 }}>
+                    {activeFilterCount} active
                   </span>
                 )}
               </div>
-              <button onClick={() => setFilters(EMPTY_FILTERS())} style={{ ...ghostBtn, fontSize: 10 }}>Reset</button>
+              <button onClick={() => setFilters(EMPTY_FILTERS())} style={{ ...ghostBtn, fontSize: 10 }}>Reset all</button>
             </div>
 
+            {/* Row 1: Site Type + Job Titles + Location + Industry */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+
+              {/* 1. Site Type — toggle card */}
+              <div style={{ ...filterCard, minWidth: 160 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>
+                  Site Filter
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {[
+                    { value: 'people',  label: '👤 People Profiles',  sub: 'linkedin.com/in' },
+                    { value: 'company', label: '🏢 Company Pages',    sub: 'linkedin.com/company' },
+                  ].map(o => (
+                    <button key={o.value} onClick={() => updateFilter('siteType', o.value)} style={{
+                      padding: '7px 10px', borderRadius: 7, border: '1px solid',
+                      borderColor: filters.siteType === o.value ? 'rgba(99,102,241,0.6)' : 'var(--border-1)',
+                      background: filters.siteType === o.value ? 'rgba(99,102,241,0.12)' : 'transparent',
+                      cursor: 'pointer', textAlign: 'left',
+                    }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: filters.siteType === o.value ? '#a5b4fc' : 'var(--text-2)' }}>{o.label}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-3)', marginTop: 2 }}>{o.sub}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 2. Job Titles */}
+              <div style={filterCard}>
+                <div style={filterLabel}>Job Title / Role</div>
+                <textarea
+                  value={filters.jobTitles}
+                  onChange={e => updateFilter('jobTitles', e.target.value)}
+                  placeholder={'Founder, CEO, CTO\nHead of Engineering'}
+                  rows={3}
+                  style={{ ...filterTextarea }}
+                />
+                <div style={filterDesc}>Comma-separated → <code style={codeStyle}>("CEO" OR "Founder")</code></div>
+              </div>
+
+              {/* 3. Location */}
+              <div style={filterCard}>
+                <div style={filterLabel}>Location</div>
+                <textarea
+                  value={filters.locations}
+                  onChange={e => updateFilter('locations', e.target.value)}
+                  placeholder={'India, United States\nSan Francisco, Bangalore'}
+                  rows={3}
+                  style={{ ...filterTextarea }}
+                />
+                <div style={filterDesc}>City, state, or country → <code style={codeStyle}>("India" OR "London")</code></div>
+              </div>
+
+              {/* 4. Industry */}
+              <div style={filterCard}>
+                <div style={filterLabel}>Industry / Niche</div>
+                <textarea
+                  value={filters.industries}
+                  onChange={e => updateFilter('industries', e.target.value)}
+                  placeholder={'SaaS, Fintech\nE-commerce, HealthTech'}
+                  rows={3}
+                  style={{ ...filterTextarea }}
+                />
+                <div style={filterDesc}>From bio/headline → <code style={codeStyle}>("SaaS" OR "Fintech")</code></div>
+              </div>
+            </div>
+
+            {/* Row 2: Keywords + Company + Exclusions + Exact Phrase + Freshness */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 10 }}>
 
-              {/* Google Country */}
+              {/* 5. Context Keywords */}
               <div style={filterCard}>
-                <div style={filterCardIcon}>🌍</div>
-                <label style={filterLabel}>Google Country <span style={filterHint}>(gl)</span></label>
-                <select value={filters.gl} onChange={e => updateFilter('gl', e.target.value)} style={filterSelect}>
-                  {GL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                <div style={filterDesc}>Localise results to a country</div>
+                <div style={filterLabel}>Keywords</div>
+                <textarea
+                  value={filters.contextKeywords}
+                  onChange={e => updateFilter('contextKeywords', e.target.value)}
+                  placeholder={'automation, CRM\nworkflow, scaling'}
+                  rows={3}
+                  style={{ ...filterTextarea }}
+                />
+                <div style={filterDesc}>Product-fit signals in bio</div>
               </div>
 
-              {/* Language */}
+              {/* 7. Company Names */}
               <div style={filterCard}>
-                <div style={filterCardIcon}>🗣️</div>
-                <label style={filterLabel}>Language <span style={filterHint}>(hl)</span></label>
-                <select value={filters.hl} onChange={e => updateFilter('hl', e.target.value)} style={filterSelect}>
-                  {HL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-                <div style={filterDesc}>Google interface language</div>
+                <div style={filterLabel}>Company Names</div>
+                <textarea
+                  value={filters.companies}
+                  onChange={e => updateFilter('companies', e.target.value)}
+                  placeholder={'Stripe, Shopify\nZoho, Freshworks'}
+                  rows={3}
+                  style={{ ...filterTextarea }}
+                />
+                <div style={filterDesc}>Target specific accounts</div>
               </div>
 
-              {/* Date range */}
+              {/* 6. Exclusions */}
               <div style={filterCard}>
-                <div style={filterCardIcon}>📅</div>
-                <label style={filterLabel}>Date Range <span style={filterHint}>(tbs)</span></label>
+                <div style={filterLabel}>Exclude</div>
+                <textarea
+                  value={filters.exclusions}
+                  onChange={e => updateFilter('exclusions', e.target.value)}
+                  placeholder={'Intern, Student\nFresher, Recruiter'}
+                  rows={3}
+                  style={{ ...filterTextarea }}
+                />
+                <div style={filterDesc}>Noise removal → <code style={codeStyle}>NOT ("Intern" OR …)</code></div>
+              </div>
+
+              {/* 9. Exact Phrase */}
+              <div style={filterCard}>
+                <div style={filterLabel}>Exact Phrase</div>
+                <input
+                  value={filters.exactPhrase}
+                  onChange={e => updateFilter('exactPhrase', e.target.value)}
+                  placeholder='co-founder at'
+                  style={{ ...filterInput }}
+                />
+                <div style={{ ...filterDesc, marginTop: 6 }}>
+                  Wrapped in quotes → <code style={codeStyle}>"co-founder at"</code>
+                </div>
+              </div>
+
+              {/* 8. Freshness */}
+              <div style={filterCard}>
+                <div style={filterLabel}>Freshness</div>
                 <select value={filters.tbs} onChange={e => updateFilter('tbs', e.target.value)} style={filterSelect}>
                   {TBS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
-                <div style={filterDesc}>When Google indexed the profile</div>
-              </div>
-
-              {/* Exclude keywords */}
-              <div style={filterCard}>
-                <div style={filterCardIcon}>🚫</div>
-                <label style={filterLabel}>Exclude Keywords</label>
-                <input
-                  value={filters.excludeKeywords}
-                  onChange={e => updateFilter('excludeKeywords', e.target.value)}
-                  placeholder="recruiter, sales, intern"
-                  style={{ ...filterSelect, fontFamily: 'inherit' }}
-                />
-                <div style={filterDesc}>Comma-separated words to exclude</div>
-              </div>
-
-              {/* Exact title match */}
-              <div style={{ ...filterCard, justifyContent: 'center', alignItems: 'flex-start' }}>
-                <div style={filterCardIcon}>🎯</div>
-                <label style={filterLabel}>Exact Title Match</label>
-                <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                  <input
-                    type="checkbox"
-                    id="exactTitle"
-                    checked={filters.exactTitle}
-                    onChange={e => updateFilter('exactTitle', e.target.checked)}
-                    style={{ accentColor: '#6366f1', cursor: 'pointer', width: 15, height: 15 }}
-                  />
-                  <label htmlFor="exactTitle" style={{ fontSize: 12, color: 'var(--text-2)', cursor: 'pointer', fontWeight: filters.exactTitle ? 600 : 400 }}>
-                    {filters.exactTitle ? 'Enabled' : 'Disabled'}
-                  </label>
-                </div>
-                <div style={filterDesc}>Wraps Role/Title in quotes</div>
+                <div style={{ ...filterDesc, marginTop: 6 }}>When Google indexed the profile</div>
               </div>
 
             </div>
@@ -432,8 +507,6 @@ export default function LinkedInFinderPage() {
 
             return (
               <div key={s.id} style={{ marginBottom: 12, background: 'var(--bg-card)', border: '1px solid var(--border-1)', borderRadius: 10, overflow: 'hidden' }}>
-
-                {/* Header row */}
                 <div style={{ padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: urls.length ? '1px solid var(--border-1)' : 'none' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -452,7 +525,6 @@ export default function LinkedInFinderPage() {
                   </div>
                 </div>
 
-                {/* URL list */}
                 {visible.map((url, j) => (
                   <div key={j} style={{ padding: '7px 14px', borderBottom: '1px solid var(--border-1)', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <a href={url} target="_blank" rel="noreferrer"
@@ -462,7 +534,6 @@ export default function LinkedInFinderPage() {
                   </div>
                 ))}
 
-                {/* Show more / less */}
                 {urls.length > 3 && (
                   <button onClick={() => toggleExpand(s.id)} style={{
                     width: '100%', padding: '8px 14px', border: 'none', background: 'transparent',
@@ -493,20 +564,27 @@ const ghostBtn = {
   padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border-1)',
   background: 'transparent', color: 'var(--text-2)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
 }
-
 const filterCard = {
   background: 'var(--bg-card)', border: '1px solid var(--border-1)', borderRadius: 10,
-  padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6,
+  padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4,
 }
-const filterCardIcon = { fontSize: 16, marginBottom: 2 }
-const filterLabel = { display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.04em' }
-const filterHint  = { fontWeight: 400, color: 'var(--text-3)', textTransform: 'none', letterSpacing: 0, fontSize: 10 }
-const filterDesc  = { fontSize: 10, color: 'var(--text-3)', marginTop: 2, lineHeight: 1.4 }
-const filterSelect = {
+const filterLabel = { fontSize: 10, fontWeight: 700, color: 'var(--text-2)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }
+const filterDesc  = { fontSize: 10, color: 'var(--text-3)', lineHeight: 1.4 }
+const filterTextarea = {
+  width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-1)',
+  background: 'var(--bg-base)', color: 'var(--text-1)', fontSize: 11, outline: 'none',
+  fontFamily: 'inherit', resize: 'none', lineHeight: 1.5, boxSizing: 'border-box',
+}
+const filterInput = {
   width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-1)',
   background: 'var(--bg-base)', color: 'var(--text-1)', fontSize: 12, outline: 'none',
-  cursor: 'pointer',
+  fontFamily: 'inherit', boxSizing: 'border-box',
 }
+const filterSelect = {
+  width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-1)',
+  background: 'var(--bg-base)', color: 'var(--text-1)', fontSize: 12, outline: 'none', cursor: 'pointer',
+}
+const codeStyle = { fontSize: 9, background: 'rgba(99,102,241,0.1)', color: '#a5b4fc', padding: '1px 4px', borderRadius: 4 }
 
 function SearchIcon() {
   return (
