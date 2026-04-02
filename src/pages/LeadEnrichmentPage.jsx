@@ -1444,6 +1444,7 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
   const subStatusColor = (s) => ({
     pending:               '#6b7280',
     running:               '#6366f1',
+    scraped:               '#eab308',
     completed:             '#10b981',
     completed_with_errors: '#f97316',
     failed:                '#ef4444',
@@ -1451,6 +1452,7 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
 
   const subStatusIcon = (s) => {
     if (s === 'running') return <span style={{ display: 'inline-block', animation: 'spin 1s linear infinite' }}><RefreshCw size={9} /></span>
+    if (s === 'scraped') return <Database size={9} />
     if (s === 'completed') return <CheckCircle size={9} />
     if (s === 'failed') return <AlertCircle size={9} />
     return <span style={{ display: 'inline-block', width: 9, height: 9, borderRadius: '50%', background: '#6b7280', opacity: 0.5 }} />
@@ -1620,7 +1622,7 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
                       return (
                         <div key={sj.id} style={{
                           padding: '8px 10px', borderRadius: 7,
-                          border: `1px solid ${sj.status === 'running' ? 'rgba(99,102,241,0.3)' : 'var(--border-1)'}`,
+                          border: `1px solid ${sj.status === 'running' ? 'rgba(99,102,241,0.3)' : sj.status === 'scraped' ? 'rgba(234,179,8,0.35)' : 'var(--border-1)'}`,
                           background: 'var(--bg-elevated)',
                         }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
@@ -1639,6 +1641,11 @@ function JobsTab({ jobs, onRefresh, onSelectJob }) {
                               transition: 'width 0.8s ease',
                             }} />
                           </div>
+                          {sj.status === 'scraped' && (
+                            <div style={{ fontSize: 9, color: '#eab308', marginTop: 3 }}>
+                              Scraped · LLM processing…
+                            </div>
+                          )}
                           {sj.failed > 0 && (
                             <div style={{ fontSize: 9, color: '#ef4444', marginTop: 3 }}>
                               {sj.failed} failed
