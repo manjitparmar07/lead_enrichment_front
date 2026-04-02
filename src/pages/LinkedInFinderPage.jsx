@@ -6,7 +6,6 @@ const BACKEND = `${import.meta.env.VITE_BACKEND_URL || 'https://leadenrichment-p
 const jsonHdr = () => ({ 'Content-Type': 'application/json' })
 
 const RESULT_OPTIONS = [10, 20, 50, 100]
-const EMPTY_ROW = () => ({ id: Date.now(), role: '', industry: '', location: '', country: '', keywords: '' })
 
 const TBS_OPTIONS = [
   { value: '', label: 'Any time' },
@@ -36,11 +35,8 @@ function boolGroup(csv) {
   return `(${parts.map(p => `"${p}"`).join(' OR ')})`
 }
 
-function buildQuery(row, filters) {
-  const base = [row.role, row.industry, row.location, row.country, row.keywords]
-    .map(s => s.trim()).filter(Boolean).join(' ')
-
-  const parts = [base]
+function buildQuery(filters) {
+  const parts = []
   if (filters.jobTitles)       parts.push(boolGroup(filters.jobTitles))
   if (filters.locations)       parts.push(boolGroup(filters.locations))
   if (filters.industries)      parts.push(boolGroup(filters.industries))
@@ -67,7 +63,6 @@ function getOrgId() {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function LinkedInFinderPage() {
-  const [rows, setRows]               = useState([EMPTY_ROW()])
   const [numResults, setNumResults]   = useState(10)
   const [filters, setFilters]         = useState(EMPTY_FILTERS())
   const [searching, setSearching]     = useState(false)
@@ -104,26 +99,12 @@ export default function LinkedInFinderPage() {
 
   useEffect(() => { loadHistory() }, [loadHistory])
 
-  // ── Row management ────────────────────────────────────────────────────────
-
-  const updateRow = (id, field, value) =>
-    setRows(rs => rs.map(r => r.id === id ? { ...r, [field]: value } : r))
-
-  const addRow = () => {
-    if (rows.length >= 20) return toast.error('Max 20 search rows')
-    setRows(rs => [...rs, EMPTY_ROW()])
-  }
-
-  const removeRow = (id) => {
-    if (rows.length === 1) return
-    setRows(rs => rs.filter(r => r.id !== id))
-  }
-
   // ── Search ────────────────────────────────────────────────────────────────
 
   const handleSearch = async () => {
-    const queries = rows.map(r => buildQuery(r, filters)).filter(Boolean)
-    if (!queries.length) return toast.error('Fill at least one field to search')
+    const query = buildQuery(filters)
+    if (!query) return toast.error('Fill at least one filter to search')
+    const queries = [query]
 
     setSearching(true); setResults([]); setAllUrls([]); setSelected(new Set())
     try {
@@ -201,56 +182,7 @@ export default function LinkedInFinderPage() {
       {activeTab === 'search' && (
         <div>
 
-          {/* Search rows table */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-1)', borderRadius: 10, overflow: 'hidden', marginBottom: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 32px', gap: 0, background: 'var(--bg-base)', borderBottom: '1px solid var(--border-1)', padding: '8px 14px' }}>
-              {['Role / Title', 'Industry', 'Location', 'Country', 'Keywords', ''].map((h, i) => (
-                <div key={i} style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.05em', paddingRight: 8 }}>{h}</div>
-              ))}
-            </div>
-
-            {rows.map((row, idx) => (
-              <div key={row.id} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 32px', gap: 0, borderBottom: idx < rows.length - 1 ? '1px solid var(--border-1)' : 'none', alignItems: 'center' }}>
-                {['role', 'industry', 'location', 'country', 'keywords'].map((field, fi) => (
-                  <input
-                    key={field}
-                    value={row[field]}
-                    onChange={e => updateRow(row.id, field, e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && addRow()}
-                    placeholder={['e.g. CEO', 'e.g. SaaS', 'e.g. Mumbai', 'e.g. India', 'startup'][fi]}
-                    style={{
-                      padding: '10px 14px', border: 'none', borderRight: fi < 4 ? '1px solid var(--border-1)' : 'none',
-                      background: 'transparent', color: 'var(--text-1)', fontSize: 12, outline: 'none',
-                      fontFamily: 'inherit', width: '100%', boxSizing: 'border-box',
-                    }}
-                  />
-                ))}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {rows.length > 1 && (
-                    <button onClick={() => removeRow(row.id)} title="Remove row" style={{
-                      background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-3)',
-                      padding: 4, display: 'flex', alignItems: 'center',
-                    }}>
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border-1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <button onClick={addRow} disabled={rows.length >= 20} style={{
-                ...ghostBtn, display: 'flex', alignItems: 'center', gap: 5,
-                opacity: rows.length >= 20 ? 0.4 : 1,
-              }}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Add Row
-              </button>
-              <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{rows.length} / 20 rows</span>
-            </div>
-          </div>
-
-          {/* ── Advanced Filters ─────────────────────────────────────────────── */}
+          {/* ── Search Filters ───────────────────────────────────────────────── */}
           <div style={{ marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 8 }}>
