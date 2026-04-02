@@ -8,6 +8,42 @@ const jsonHdr = () => ({ 'Content-Type': 'application/json' })
 const RESULT_OPTIONS = [10, 20, 50, 100]
 const EMPTY_ROW = () => ({ id: Date.now(), role: '', industry: '', location: '', country: '', keywords: '' })
 
+const GL_OPTIONS = [
+  { value: '', label: 'Any country' },
+  { value: 'us', label: 'United States' },
+  { value: 'in', label: 'India' },
+  { value: 'gb', label: 'United Kingdom' },
+  { value: 'ca', label: 'Canada' },
+  { value: 'au', label: 'Australia' },
+  { value: 'sg', label: 'Singapore' },
+  { value: 'ae', label: 'UAE' },
+  { value: 'de', label: 'Germany' },
+  { value: 'fr', label: 'France' },
+  { value: 'nl', label: 'Netherlands' },
+  { value: 'se', label: 'Sweden' },
+  { value: 'br', label: 'Brazil' },
+]
+
+const HL_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'hi', label: 'Hindi' },
+  { value: 'es', label: 'Spanish' },
+  { value: 'fr', label: 'French' },
+  { value: 'de', label: 'German' },
+  { value: 'pt', label: 'Portuguese' },
+  { value: 'nl', label: 'Dutch' },
+]
+
+const TBS_OPTIONS = [
+  { value: '', label: 'Any time' },
+  { value: 'qdr:d', label: 'Past 24 hours' },
+  { value: 'qdr:w', label: 'Past week' },
+  { value: 'qdr:m', label: 'Past month' },
+  { value: 'qdr:y', label: 'Past year' },
+]
+
+const EMPTY_FILTERS = () => ({ gl: '', hl: 'en', tbs: '', excludeKeywords: '', exactTitle: false })
+
 function getOrgId() {
   try {
     const token = localStorage.getItem('wb_ai_token')
@@ -17,8 +53,9 @@ function getOrgId() {
   } catch { return 'default' }
 }
 
-function buildQuery({ role, industry, location, country, keywords }) {
-  return [role, industry, location, country, keywords].map(s => s.trim()).filter(Boolean).join(' ')
+function buildQuery({ role, industry, location, country, keywords }, exactTitle = false) {
+  const titlePart = role.trim() ? (exactTitle ? `"${role.trim()}"` : role.trim()) : ''
+  return [titlePart, industry, location, country, keywords].map(s => s.trim()).filter(Boolean).join(' ')
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -26,6 +63,8 @@ function buildQuery({ role, industry, location, country, keywords }) {
 export default function LinkedInFinderPage() {
   const [rows, setRows]               = useState([EMPTY_ROW()])
   const [numResults, setNumResults]   = useState(10)
+  const [filters, setFilters]         = useState(EMPTY_FILTERS())
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [searching, setSearching]     = useState(false)
   const [results, setResults]         = useState([])
   const [allUrls, setAllUrls]         = useState([])
@@ -35,6 +74,8 @@ export default function LinkedInFinderPage() {
   const [historyLoading, setHistoryLoading] = useState(false)
   const [expandedIds, setExpandedIds] = useState(new Set())
   const [activeTab, setActiveTab]     = useState('search')
+
+  const updateFilter = (key, value) => setFilters(f => ({ ...f, [key]: value }))
 
   const orgId = getOrgId()
 
@@ -70,14 +111,14 @@ export default function LinkedInFinderPage() {
   // ── Search ────────────────────────────────────────────────────────────────
 
   const handleSearch = async () => {
-    const queries = rows.map(buildQuery).filter(Boolean)
+    const queries = rows.map(r => buildQuery(r, filters.exactTitle)).filter(Boolean)
     if (!queries.length) return toast.error('Fill at least one field to search')
 
     setSearching(true); setResults([]); setAllUrls([]); setSelected(new Set())
     try {
       const r = await fetch(`${BACKEND}/linkedin-finder/bulk-search`, {
         method: 'POST', headers: jsonHdr(),
-        body: JSON.stringify({ queries, org_id: orgId, num: numResults }),
+        body: JSON.stringify({ queries, org_id: orgId, num: numResults, filters }),
       })
       const data = await r.json()
       if (!r.ok) throw new Error(data.detail || 'Search failed')
@@ -200,6 +241,90 @@ export default function LinkedInFinderPage() {
               </button>
               <span style={{ fontSize: 11, color: 'var(--text-3)' }}>{rows.length} / 20 rows</span>
             </div>
+          </div>
+
+          {/* Advanced Filters */}
+          <div style={{ marginBottom: 16 }}>
+            <button onClick={() => setShowAdvanced(v => !v)} style={{
+              display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none',
+              cursor: 'pointer', padding: '4px 0', color: 'var(--text-3)', fontSize: 12, fontWeight: 600,
+            }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                strokeLinecap="round" strokeLinejoin="round"
+                style={{ transform: showAdvanced ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+              Advanced Filters
+              {(filters.gl || filters.tbs || filters.excludeKeywords || filters.exactTitle) && (
+                <span style={{ background: 'rgba(99,102,241,0.2)', color: '#a5b4fc', fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 10 }}>
+                  {[filters.gl, filters.tbs, filters.excludeKeywords, filters.exactTitle].filter(Boolean).length} active
+                </span>
+              )}
+            </button>
+
+            {showAdvanced && (
+              <div style={{
+                marginTop: 10, padding: 16, background: 'var(--bg-card)',
+                border: '1px solid var(--border-1)', borderRadius: 10,
+                display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 14,
+              }}>
+
+                {/* Google Country */}
+                <div>
+                  <label style={filterLabel}>Google Country <span style={filterHint}>(gl)</span></label>
+                  <select value={filters.gl} onChange={e => updateFilter('gl', e.target.value)} style={filterSelect}>
+                    {GL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <div style={filterDesc}>Localises search results to a specific country</div>
+                </div>
+
+                {/* Language */}
+                <div>
+                  <label style={filterLabel}>Language <span style={filterHint}>(hl)</span></label>
+                  <select value={filters.hl} onChange={e => updateFilter('hl', e.target.value)} style={filterSelect}>
+                    {HL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <div style={filterDesc}>Interface language for Google results</div>
+                </div>
+
+                {/* Date range */}
+                <div>
+                  <label style={filterLabel}>Date Range <span style={filterHint}>(tbs)</span></label>
+                  <select value={filters.tbs} onChange={e => updateFilter('tbs', e.target.value)} style={filterSelect}>
+                    {TBS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <div style={filterDesc}>Filter by when Google indexed the profile</div>
+                </div>
+
+                {/* Exclude keywords */}
+                <div>
+                  <label style={filterLabel}>Exclude Keywords</label>
+                  <input
+                    value={filters.excludeKeywords}
+                    onChange={e => updateFilter('excludeKeywords', e.target.value)}
+                    placeholder="e.g. recruiter, sales, intern"
+                    style={{ ...filterSelect, fontFamily: 'inherit' }}
+                  />
+                  <div style={filterDesc}>Comma-separated words to exclude from results</div>
+                </div>
+
+                {/* Exact title toggle — spans full row as footer */}
+                <div style={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 10, paddingTop: 4, borderTop: '1px solid var(--border-1)' }}>
+                  <input
+                    type="checkbox"
+                    id="exactTitle"
+                    checked={filters.exactTitle}
+                    onChange={e => updateFilter('exactTitle', e.target.checked)}
+                    style={{ accentColor: '#6366f1', cursor: 'pointer' }}
+                  />
+                  <label htmlFor="exactTitle" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-2)', cursor: 'pointer' }}>
+                    Exact title match
+                  </label>
+                  <span style={filterDesc}>Wraps the Role/Title field in quotes for stricter matching</span>
+                  <button onClick={() => setFilters(EMPTY_FILTERS())} style={{ marginLeft: 'auto', ...ghostBtn, fontSize: 10 }}>Reset filters</button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Options row */}
@@ -371,6 +496,15 @@ export default function LinkedInFinderPage() {
 const ghostBtn = {
   padding: '6px 12px', borderRadius: 7, border: '1px solid var(--border-1)',
   background: 'transparent', color: 'var(--text-2)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+}
+
+const filterLabel = { display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--text-2)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }
+const filterHint  = { fontWeight: 400, color: 'var(--text-3)', textTransform: 'none', letterSpacing: 0, fontSize: 10 }
+const filterDesc  = { fontSize: 10, color: 'var(--text-3)', marginTop: 5, lineHeight: 1.4 }
+const filterSelect = {
+  width: '100%', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--border-1)',
+  background: 'var(--bg-base)', color: 'var(--text-1)', fontSize: 12, outline: 'none',
+  cursor: 'pointer',
 }
 
 function SearchIcon() {
