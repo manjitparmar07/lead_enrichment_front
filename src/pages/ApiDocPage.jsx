@@ -1,7 +1,14 @@
 // ApiDocPage.jsx — Lead Enrichment API Reference
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Copy, Check, Eye, EyeOff, Key, Loader } from 'lucide-react'
+
+const API_DOC_BASE = import.meta.env.VITE_BACKEND_URL || ''
+
+function docAuthHeaders() {
+  const token = localStorage.getItem('wb_ai_token') || ''
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }
+}
 
 const BASE = import.meta.env.VITE_BACKEND_URL || 'https://leadenrichment-production-5b78.up.railway.app'
 const TOKEN   = '<YOUR_TOKEN>'
@@ -16,8 +23,21 @@ const PROFILE_EXAMPLE = `{
 }`
 
 export default function ApiDocPage() {
-  const [activeGroup, setActiveGroup] = useState('token')
-  const [copied, setCopied]           = useState(null)
+  const [activeGroup,    setActiveGroup]    = useState('token')
+  const [copied,         setCopied]         = useState(null)
+  const [customFeatures, setCustomFeatures] = useState([])
+  const [cfLoading,      setCfLoading]      = useState(false)
+
+  useEffect(() => {
+    if (activeGroup !== 'custom') return
+    if (customFeatures.length > 0) return
+    setCfLoading(true)
+    fetch(`${API_DOC_BASE}/api/v1/features`, { headers: docAuthHeaders() })
+      .then(r => r.json())
+      .then(d => setCustomFeatures(d.features || []))
+      .catch(() => {})
+      .finally(() => setCfLoading(false))
+  }, [activeGroup]) // eslint-disable-line
 
   const copy = (id, text) => {
     navigator.clipboard.writeText(text)
@@ -38,6 +58,8 @@ export default function ApiDocPage() {
     { id: 'output',   label: 'Output',            icon: '📤' },
     { id: 'divider3', divider: true, label: 'System Prompt' },
     { id: 'sysprompt', label: 'System Prompt',    icon: '🗂️' },
+    { id: 'divider4', divider: true, label: 'Custom' },
+    { id: 'custom',   label: 'Custom Features',   icon: '⚡' },
   ]
 
   const aiNote = 'No auth required. Pass the raw BrightData profile object in the body.'
@@ -681,9 +703,25 @@ export default function ApiDocPage() {
         <div style={{ flex: 1, paddingLeft: 24 }}>
           {activeGroup === 'token'
             ? <TokenGenerator BASE={BASE} copy={copy} copied={copied} />
+            : activeGroup === 'custom'
+            ? <CustomFeaturesDoc
+                BASE={BASE}
+                features={customFeatures}
+                loading={cfLoading}
+                copy={copy}
+                copied={copied}
+                onRefresh={() => {
+                  setCustomFeatures([])
+                  setCfLoading(true)
+                  fetch(`${API_DOC_BASE}/api/v1/features`, { headers: docAuthHeaders() })
+                    .then(r => r.json())
+                    .then(d => setCustomFeatures(d.features || []))
+                    .catch(() => {})
+                    .finally(() => setCfLoading(false))
+                }}
+              />
             : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-
                 {list.map(ep => {
                   const mc = METHOD_COLOR[ep.method] || METHOD_COLOR.GET
                   return (
@@ -691,7 +729,6 @@ export default function ApiDocPage() {
                       borderRadius: 10, border: '1px solid var(--border-1)',
                       background: 'var(--bg-card)', overflow: 'hidden',
                     }}>
-                      {/* Endpoint header */}
                       <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-1)',
                         display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span style={{
@@ -701,11 +738,8 @@ export default function ApiDocPage() {
                         <code style={{ fontSize: 12, color: '#a5b4fc', fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ep.path}</code>
                         <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', flexShrink: 0 }}>{ep.title}</span>
                       </div>
-
                       <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
                         <p style={{ margin: 0, fontSize: 12, color: 'var(--text-2)', lineHeight: 1.65 }}>{ep.desc}</p>
-
-                        {/* curl */}
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>curl</span>
@@ -718,8 +752,6 @@ export default function ApiDocPage() {
                             whiteSpace: 'pre',
                           }}>{ep.curl}</pre>
                         </div>
-
-                        {/* response */}
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                             <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>response</span>
@@ -936,6 +968,227 @@ function TokenGenerator({ BASE, copy, copied }) {
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  )
+}
+
+// ── Custom Features Doc ────────────────────────────────────────────────────────
+
+function buildSampleInputs(params) {
+  const obj = {}
+  for (const p of (params || [])) {
+    obj[p.key] = p.placeholder || `<${p.label || p.key}>`
+  }
+  return obj
+}
+
+function buildCurl(BASE, feature) {
+  const params = typeof feature.input_params === 'string'
+    ? JSON.parse(feature.input_params || '[]')
+    : (feature.input_params || [])
+  const sample = buildSampleInputs(params)
+  const body = JSON.stringify({ inputs: sample }, null, 4)
+    .split('\n').map((l, i) => i === 0 ? l : '  ' + l).join('\n')
+  return `curl -X POST ${BASE}/api/v1/features/run/${feature.endpoint_slug} \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer <YOUR_TOKEN>" \\
+  -d '${body}'`
+}
+
+function buildSampleResponse(feature) {
+  return `{
+  "feature_code": "${feature.feature_code}",
+  "feature_name": "${feature.feature_name}",
+  "slug": "${feature.endpoint_slug}",
+  "result": {
+    // ... AI-generated JSON output based on system prompt
+  },
+  "token_usage": {
+    "prompt_tokens": 120,
+    "completion_tokens": 80,
+    "total_tokens": 200,
+    "model": "${feature.model_name || 'llama-3.1-8b-instant'}",
+    "provider": "${feature.model_provider || 'groq'}"
+  },
+  "debug": {
+    "system_prompt": "... resolved system prompt ...",
+    "user_message": "... built from inputs ...",
+    "model_provider": "${feature.model_provider || 'groq'}",
+    "model_name": "${feature.model_name || 'llama-3.1-8b-instant'}",
+    "temperature": ${feature.temperature ?? 0.3}
+  }
+}`
+}
+
+function CustomFeaturesDoc({ BASE, features, loading, copy, copied, onRefresh }) {
+  const POST_COLOR = { bg: 'rgba(99,102,241,0.12)', color: '#818cf8', border: 'rgba(99,102,241,0.3)' }
+
+  if (loading) {
+    return <div style={{ color: 'var(--text-3)', fontSize: 13 }}>Loading custom features…</div>
+  }
+
+  if (features.length === 0) {
+    return (
+      <div style={{ textAlign: 'center', padding: '48px 32px', border: '1px dashed var(--border-1)', borderRadius: 12 }}>
+        <div style={{ fontSize: 32, marginBottom: 12 }}>⚡</div>
+        <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-1)', marginBottom: 8 }}>No custom features yet</div>
+        <div style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 20 }}>
+          Create custom features in the <b style={{ color: 'var(--text-2)' }}>Custom Features</b> page — they'll appear here automatically.
+        </div>
+        <button onClick={onRefresh} style={{
+          background: 'transparent', border: '1px solid var(--border-1)',
+          color: 'var(--text-3)', cursor: 'pointer', borderRadius: 7,
+          padding: '6px 14px', fontSize: 12, fontWeight: 600,
+        }}>↻ Refresh</button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      {/* Header info */}
+      <div style={{
+        padding: '12px 16px', borderRadius: 10,
+        background: 'rgba(99,102,241,0.06)', border: '1px solid rgba(99,102,241,0.2)',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#a5b4fc', marginBottom: 4 }}>
+            {features.length} Custom Feature{features.length !== 1 ? 's' : ''}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+            Auth: <code style={{ color: '#a7f3d0', fontSize: 10 }}>Authorization: Bearer &lt;token&gt;</code> header required
+          </div>
+        </div>
+        <button onClick={onRefresh} style={{
+          background: 'transparent', border: '1px solid var(--border-1)',
+          color: 'var(--text-3)', cursor: 'pointer', borderRadius: 7,
+          padding: '5px 12px', fontSize: 11, fontWeight: 600,
+        }}>↻ Refresh</button>
+      </div>
+
+      {features.map(f => {
+        const params = typeof f.input_params === 'string'
+          ? JSON.parse(f.input_params || '[]')
+          : (f.input_params || [])
+        const curlText = buildCurl(BASE, f)
+        const resText  = buildSampleResponse(f)
+        const curlId   = `cf-curl-${f.id}`
+        const resId    = `cf-res-${f.id}`
+
+        return (
+          <div key={f.id} style={{
+            borderRadius: 10, border: '1px solid var(--border-1)',
+            background: 'var(--bg-card)', overflow: 'hidden',
+          }}>
+            {/* Header */}
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-1)',
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 5, flexShrink: 0,
+                background: POST_COLOR.bg, color: POST_COLOR.color, border: `1px solid ${POST_COLOR.border}`,
+              }}>POST</span>
+              <code style={{ fontSize: 11, color: '#a5b4fc', fontFamily: 'monospace', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                /api/v1/features/run/{f.endpoint_slug}
+              </code>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-1)', flexShrink: 0 }}>{f.feature_name}</span>
+              <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700, background: 'rgba(99,102,241,0.15)', color: '#a5b4fc', flexShrink: 0 }}>
+                {f.module}
+              </span>
+              <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, fontWeight: 700, background: 'rgba(16,185,129,0.1)', color: '#34d399', flexShrink: 0 }}>
+                {f.task_type}
+              </span>
+            </div>
+
+            <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/* Description */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {f.description && (
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-2)', lineHeight: 1.65 }}>{f.description}</p>
+                )}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14, fontSize: 11, color: 'var(--text-3)' }}>
+                  <span>Code: <b style={{ color: 'var(--text-2)', fontFamily: 'monospace' }}>{f.feature_code}</b></span>
+                  <span>Model: <b style={{ color: 'var(--text-2)', fontFamily: 'monospace' }}>{f.model_provider}/{f.model_name || '—'}</b></span>
+                  <span>Temp: <b style={{ color: 'var(--text-2)' }}>{f.temperature ?? 0.3}</b></span>
+                </div>
+              </div>
+
+              {/* Input params table */}
+              {params.length > 0 && (
+                <div>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>
+                    Input Parameters
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border-1)' }}>
+                        {['key', 'label', 'type', 'placeholder'].map(h => (
+                          <th key={h} style={{ padding: '5px 10px', textAlign: 'left', color: 'var(--text-3)', fontWeight: 700, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {params.map((p, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                          <td style={{ padding: '6px 10px', fontFamily: 'monospace', color: '#a5b4fc' }}>{p.key}</td>
+                          <td style={{ padding: '6px 10px', color: 'var(--text-2)' }}>{p.label}</td>
+                          <td style={{ padding: '6px 10px', color: '#fbbf24', fontFamily: 'monospace' }}>{p.type}</td>
+                          <td style={{ padding: '6px 10px', color: 'var(--text-3)', fontStyle: 'italic' }}>{p.placeholder}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* System prompt */}
+              {f.system_prompt && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>System Prompt</span>
+                    <CopyBtn id={`cf-sys-${f.id}`} text={f.system_prompt} copied={copied} onCopy={copy} />
+                  </div>
+                  <pre style={{
+                    margin: 0, padding: '10px 14px', borderRadius: 8, overflow: 'auto',
+                    background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(245,158,11,0.2)',
+                    fontSize: 11, lineHeight: 1.75, color: '#fde68a',
+                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 160,
+                  }}>{f.system_prompt}</pre>
+                </div>
+              )}
+
+              {/* Curl */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>curl</span>
+                  <CopyBtn id={curlId} text={curlText} copied={copied} onCopy={copy} />
+                </div>
+                <pre style={{
+                  margin: 0, padding: '10px 14px', borderRadius: 8, overflow: 'auto',
+                  background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.06)',
+                  fontSize: 11, lineHeight: 1.75, color: '#e2e8f0',
+                  fontFamily: "'JetBrains Mono', 'Fira Code', monospace", whiteSpace: 'pre',
+                }}>{curlText}</pre>
+              </div>
+
+              {/* Response */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>response schema</span>
+                  <CopyBtn id={resId} text={resText} copied={copied} onCopy={copy} />
+                </div>
+                <pre style={{
+                  margin: 0, padding: '10px 14px', borderRadius: 8, overflow: 'auto',
+                  background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(16,185,129,0.2)',
+                  fontSize: 11, lineHeight: 1.75, color: '#6ee7b7',
+                  fontFamily: "'JetBrains Mono', 'Fira Code', monospace", whiteSpace: 'pre',
+                }}>{resText}</pre>
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

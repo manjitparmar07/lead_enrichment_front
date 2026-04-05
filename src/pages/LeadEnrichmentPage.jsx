@@ -152,13 +152,27 @@ export default function LeadEnrichmentPage() {
   const [leadsTotal, setLeadsTotal] = useState(0)
   const [jobs, setJobs] = useState([])
   const [leadsLoading, setLeadsLoading] = useState(false)
-  const [filters, setFilters] = useState({ tier: '', min_score: '', job_id: '' })
+  const [filters, setFilters] = useState({ tier: '', min_score: '', job_id: '', sort_by: 'score', sort_dir: 'DESC', q: '' })
+  const [searchInput, setSearchInput] = useState('')  // immediate input display
+  const searchTimer = useRef(null)
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
 
   const handleFiltersChange = useCallback((updater) => {
-    setFilters(updater)
+    setFilters(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater
+      return next
+    })
     setPage(1)
+  }, [])
+
+  const handleSearchInput = useCallback((value) => {
+    setSearchInput(value)
+    clearTimeout(searchTimer.current)
+    searchTimer.current = setTimeout(() => {
+      setFilters(f => ({ ...f, q: value }))
+      setPage(1)
+    }, 400)
   }, [])
 
   const fetchLeads = useCallback(async () => {
@@ -168,6 +182,9 @@ export default function LeadEnrichmentPage() {
       if (filters.tier) p.set('tier', filters.tier)
       if (filters.min_score) p.set('min_score', filters.min_score)
       if (filters.job_id) p.set('job_id', filters.job_id)
+      if (filters.sort_by) p.set('sort_by', filters.sort_by)
+      if (filters.sort_dir) p.set('sort_dir', filters.sort_dir)
+      if (filters.q) p.set('q', filters.q)
       const r = await fetch(`${BACKEND}/leads?${p}`, { headers: jsonHdr() })
       const d = await r.json()
       setLeads(d.leads || [])
@@ -313,6 +330,7 @@ export default function LeadEnrichmentPage() {
         <ResultsTab
           leads={leads} total={leadsTotal} loading={leadsLoading}
           filters={filters} onFiltersChange={handleFiltersChange}
+          searchInput={searchInput} onSearchInput={handleSearchInput}
           onRefresh={fetchLeads} onLeadDeleted={fetchLeads} jobs={jobs}
           page={page} pageSize={pageSize}
           onPageChange={setPage} onPageSizeChange={(s) => { setPageSize(s); setPage(1) }}
@@ -1157,7 +1175,7 @@ function BulkTab({ onDone }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Results Tab
 // ─────────────────────────────────────────────────────────────────────────────
-function ResultsTab({ leads, total, loading, filters, onFiltersChange, onRefresh, onLeadDeleted, jobs, page, pageSize, onPageChange, onPageSizeChange }) {
+function ResultsTab({ leads, total, loading, filters, onFiltersChange, searchInput, onSearchInput, onRefresh, onLeadDeleted, jobs, page, pageSize, onPageChange, onPageSizeChange }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
   const [expanded, setExpanded] = useState(null)
   const [jsonModal, setJsonModal] = useState(null)
@@ -1193,6 +1211,22 @@ function ResultsTab({ leads, total, loading, filters, onFiltersChange, onRefresh
 
   return (
     <div>
+      {/* Search */}
+      <div style={{ marginBottom: 10 }}>
+        <input
+          type="text"
+          value={searchInput ?? ''}
+          onChange={e => onSearchInput(e.target.value)}
+          placeholder="Search by name or company…"
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            background: 'var(--bg-base)', border: '1px solid var(--border-1)',
+            color: 'var(--text-1)', borderRadius: 8, padding: '7px 12px',
+            fontSize: 12, outline: 'none',
+          }}
+        />
+      </div>
+
       {/* Filters */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
         <select value={filters.tier} onChange={e => onFiltersChange(f => ({...f, tier: e.target.value}))} style={selStyle}>
@@ -1209,8 +1243,20 @@ function ResultsTab({ leads, total, loading, filters, onFiltersChange, onRefresh
           <option value="">All jobs</option>
           {jobs.map(j => <option key={j.id} value={j.id}>{j.id.slice(0,8)}… ({j.total_urls})</option>)}
         </select>
+        <select value={filters.sort_by || 'score'} onChange={e => onFiltersChange(f => ({...f, sort_by: e.target.value}))} style={selStyle}>
+          <option value="score">Sort: Score</option>
+          <option value="name">Sort: Name</option>
+          <option value="company">Sort: Company</option>
+          <option value="enriched_at">Sort: Enriched At</option>
+          <option value="created_at">Sort: Created At</option>
+        </select>
+        <button onClick={() => onFiltersChange(f => ({...f, sort_dir: f.sort_dir === 'ASC' ? 'DESC' : 'ASC'}))}
+          style={{ ...selStyle, cursor: 'pointer', minWidth: 36, textAlign: 'center' }}
+          title="Toggle sort direction">
+          {filters.sort_dir === 'ASC' ? '↑' : '↓'}
+        </button>
         {(filters.tier || filters.min_score || filters.job_id) && (
-          <GhostBtn onClick={() => onFiltersChange({ tier:'', min_score:'', job_id:'' })}>
+          <GhostBtn onClick={() => onFiltersChange(f => ({ ...f, tier:'', min_score:'', job_id:'', q:'' }))}>
             <X size={11} /> Clear
           </GhostBtn>
         )}
@@ -1754,16 +1800,19 @@ function EnrichJsonView({ data }) {
 }
 
 
-function _RegenJsonView({ data, leadenrich_id, endpoint, viewTab, onRegenerated, accentColor }) {
+function _RegenJsonView({ data, leadenrich_id, endpoint, viewTab, onRegenerated, accentColor, directFetch }) {
   const [regenerating, setRegenerating] = useState(false)
 
   const handleRegenerate = async () => {
     setRegenerating(true)
     try {
-      const r = await fetch(`${BACKEND}/leads/${leadenrich_id}/${endpoint}`, { method: 'POST', headers: jsonHdr() })
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}))
-        throw new Error(d?.detail || `HTTP ${r.status}`)
+      // directFetch=true: skip the regen step, just re-fetch the view tab directly (used for email)
+      if (!directFetch) {
+        const r = await fetch(`${BACKEND}/leads/${leadenrich_id}/${endpoint}`, { method: 'POST', headers: jsonHdr() })
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}))
+          throw new Error(d?.detail || `HTTP ${r.status}`)
+        }
       }
       const isGetTab = viewTab === 'linkedin'
       const v = await fetch(
@@ -1776,6 +1825,11 @@ function _RegenJsonView({ data, leadenrich_id, endpoint, viewTab, onRegenerated,
       )
       const fresh = await v.json()
       if (!v.ok) throw new Error(fresh?.detail || `HTTP ${v.status}`)
+      // Credit exhausted — show warning, don't update cache
+      if (fresh?.source === 'apollo_credit_exhausted') {
+        toast.error('Apollo credit balance exhausted. Please recharge your Apollo plan to continue email enrichment.', { duration: 6000 })
+        return
+      }
       onRegenerated(fresh)
       toast.success('Regenerated')
     } catch (e) {
@@ -1979,7 +2033,17 @@ function LeadEnrichView({ lead }) {
                 onRegenerated={fresh => setCache(p => ({ ...p, company: fresh }))}
               />
             )}
-            {!isLoading && !err && data && tab.id !== 'linkedin' && tab.id !== 'outreach' && tab.id !== 'company' && (
+            {!isLoading && !err && data && tab.id === 'email' && (
+              <_RegenJsonView
+                data={data}
+                leadenrich_id={leadenrich_id}
+                viewTab="email"
+                directFetch={true}
+                onRegenerated={fresh => setCache(p => ({ ...p, email: fresh }))}
+                accentColor="#10b981"
+              />
+            )}
+            {!isLoading && !err && data && tab.id !== 'linkedin' && tab.id !== 'outreach' && tab.id !== 'company' && tab.id !== 'email' && (
               <EnrichJsonView data={data} />
             )}
             {!isLoading && !err && !data && (

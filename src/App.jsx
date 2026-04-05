@@ -13,6 +13,7 @@ const ApiDocPage              = lazy(() => import('./pages/ApiDocPage'))
 const LioConfigPage           = lazy(() => import('./pages/LioConfigPage'))
 const SystemPromptGeneratorPage = lazy(() => import('./pages/SystemPromptGeneratorPage'))
 const LinkedInFinderPage        = lazy(() => import('./pages/LinkedInFinderPage'))
+const CustomFeaturesPage        = lazy(() => import('./pages/CustomFeaturesPage'))
 
 // ── Suspense fallback ──────────────────────────────────────────────────────
 
@@ -126,6 +127,10 @@ const NAV_ITEMS = [
     to: '/linkedin-finder', label: 'LinkedIn Finder',
     icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>,
   },
+  {
+    to: '/custom-features', label: 'Custom Features',
+    icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>,
+  },
 ]
 
 // ── App shell ──────────────────────────────────────────────────────────────
@@ -237,7 +242,8 @@ function AppShell({ user, onLogout }) {
             <Route path="/lio-config" element={<LioConfigPage />} />
 <Route path="/api-doc"          element={<ApiDocPage />} />
             <Route path="/prompt-generator"  element={<SystemPromptGeneratorPage />} />
-            <Route path="/linkedin-finder"  element={<LinkedInFinderPage />} />
+            <Route path="/linkedin-finder"    element={<LinkedInFinderPage />} />
+            <Route path="/custom-features"  element={<CustomFeaturesPage />} />
             <Route path="*"                 element={<Navigate to="/leads" replace />} />
           </Routes>
         </Suspense>

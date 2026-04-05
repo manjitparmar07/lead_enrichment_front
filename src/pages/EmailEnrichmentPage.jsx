@@ -93,6 +93,7 @@ export default function EmailEnrichmentPage() {
   const [job, setJob] = useState(null)            // active job state
   const [running, setRunning] = useState(false)
   const [limit, setLimit] = useState(500)
+  const [regenerating, setRegenerating] = useState({})  // { lead_id: true }
   const pollRef = useRef(null)
 
   // ── Load candidates ────────────────────────────────────────────────────────
@@ -153,6 +154,32 @@ export default function EmailEnrichmentPage() {
     } catch (e) {
       toast.error('Failed to start: ' + e.message)
       setRunning(false)
+    }
+  }
+
+  // ── Regenerate single lead email ───────────────────────────────────────────
+  const regenerateEmail = async (leadId, name) => {
+    setRegenerating(prev => ({ ...prev, [leadId]: true }))
+    try {
+      const res = await fetch(`${API}/leads/view/email`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ leadenrich_id: leadId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || JSON.stringify(data))
+      if (data.source === 'apollo_credit_exhausted') {
+        toast.error('Apollo credit balance exhausted. Please recharge your Apollo plan to continue email enrichment.', { duration: 6000 })
+      } else if (data.email) {
+        toast.success(`Email found: ${data.email}`)
+        loadCandidates()
+      } else {
+        toast(`No email found for ${name || leadId}`)
+      }
+    } catch (e) {
+      toast.error('Regenerate failed: ' + e.message)
+    } finally {
+      setRegenerating(prev => ({ ...prev, [leadId]: false }))
     }
   }
 
@@ -334,7 +361,7 @@ export default function EmailEnrichmentPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-1)' }}>
-                  {['Name', 'Title', 'Company', 'LinkedIn', 'Can Enrich'].map(h => (
+                  {['Name', 'Title', 'Company', 'LinkedIn', 'Can Enrich', 'Action'].map(h => (
                     <th key={h} style={{ padding: '6px 10px', textAlign: 'left', color: 'var(--text-3)', fontWeight: 600, whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -357,6 +384,22 @@ export default function EmailEnrichmentPage() {
                       <span style={tag(l.has_domain ? 'green' : 'red')}>
                         {l.has_domain ? 'YES' : 'NO DOMAIN'}
                       </span>
+                    </td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <button
+                        style={btn('ghost', regenerating[l.id])}
+                        disabled={regenerating[l.id]}
+                        onClick={() => regenerateEmail(l.id, l.name)}
+                      >
+                        {regenerating[l.id] ? <><Spinner /> Finding…</> : (
+                          <>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+                            </svg>
+                            Regenerate
+                          </>
+                        )}
+                      </button>
                     </td>
                   </tr>
                 ))}
